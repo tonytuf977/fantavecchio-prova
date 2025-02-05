@@ -1,0 +1,32 @@
+/* customStyles.css */
+.table thead th {
+    background-color: yellow;
+    color: black;
+  }
+  
+  .btn-primary {
+    background-color: blue;
+    border-color: blue;
+  }
+  
+  .btn-light {
+    background-color: white;
+    color: black;
+  }
+  
+  .btn-success {
+    background-color: green;
+    border-color: green;
+  }
+  .table-primary th {
+    background-color: var(--bs-primary) !important; /* Colore di sfondo primario */
+    color: white; /* Colore del testo bianco */
+  }
+  .text-warning {
+    color: #ffc107; /* Giallo */
+  }
+  
+  .text-danger {
+    color: #dc3545; /* Rosso */
+  }
+  

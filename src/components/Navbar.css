@@ -1,0 +1,16 @@
+/* src/components/Navbar.css */
+.navbar-profile {
+    position: relative;
+  }
+  
+/* src/components/Navbar.css */
+.notification-dot {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    height: 10px;
+    width: 10px;
+    background-color: red;
+    border-radius: 50%;
+  }
+  

@@ -1,0 +1,22 @@
+.card {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .progress {
+    height: 25px;
+  }
+  
+  .progress-bar {
+    font-size: 0.9rem;
+    line-height: 25px;
+  }
+  
+  .btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+  }
+  
+  .btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+  }

@@ -1,0 +1,35 @@
+.table-header {
+    background-color: #0056b3; /* Blu scuro per l'intestazione */
+    color: white;
+    text-align: center;
+  }
+  
+  .table-id {
+    background-color: #ffff00; /* Giallo per la colonna Id */
+  }
+  
+  .table-bordered th,
+  .table-bordered td {
+    text-align: center; /* Centra il contenuto delle celle */
+    vertical-align: middle;
+    border-color: #ddd; /* Colore dei bordi della tabella */
+  }
+  
+  .table th {
+    font-weight: bold;
+  }
+  .search-container {
+    width: 100%;
+    /* Rimuovere il padding e il margin di default, se necessario */
+    margin: 0;
+    padding: 0;
+}
+
+.search-container input[type="text"] {
+    width: 100%;
+    /* Facoltativo: per rendere la barra di ricerca più elegante */
+    box-sizing: border-box; /* Assicura che il padding e il border siano inclusi nella larghezza totale */
+    padding: 10px; /* Spazio interno */
+    border: 1px solid #ccc; /* Bordo della barra di ricerca */
+    border-radius: 4px; /* Angoli arrotondati */
+}
