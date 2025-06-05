@@ -232,29 +232,29 @@ function ListaSquadre() {
     };
   };
 
-  const handleApplyFilter = (giocatoreId, filter) => {
-    setGiocatori(prevGiocatori =>
-      prevGiocatori.map(giocatore => {
-        if (giocatore.id === giocatoreId) {
-          if (giocatore.currentFilter === filter) {
-            return giocatore;
-          }
-          const updatedGiocatore = applyFilter(giocatore, filter);
-          setFilters(prevFilters => ({
-            ...prevFilters,
-            [giocatoreId]: filter
-          }));
-          setModifiedPlayers(prev => ({
-            ...prev,
-            [giocatoreId]: updatedGiocatore
-          }));
-          return updatedGiocatore;
-        }
-        return giocatore;
-      })
-    );
+const getMesiRimanenti = (scadenza) => {
+    if (!scadenza) return null;
+    const oggi = new Date();
+    const fine = new Date(scadenza);
+    const anni = fine.getFullYear() - oggi.getFullYear();
+    const mesi = fine.getMonth() - oggi.getMonth();
+    return anni * 12 + mesi;
   };
 
+  const isSerieA = (giocatore) => {
+    return giocatore.squadraSerieA && giocatore.squadraSerieA !== 'Svincolato *';
+  };
+
+  const handleApplyFilter = (id, filter) => {
+    setGiocatori(prev => prev.map(g => {
+      if (g.id !== id || !isSerieA(g)) return g; // applica solo se Serie A
+      const newDate = new Date(g.scadenza || new Date());
+      if (filter === '+6') newDate.setMonth(newDate.getMonth() + 6);
+      if (filter === '+12') newDate.setMonth(newDate.getMonth() + 12);
+      if (filter === '+18') newDate.setMonth(newDate.getMonth() + 18);
+      return { ...g, scadenza: newDate.toISOString().split('T')[0] };
+    }));
+  };
   const handleSaveAll = async () => {
     if (!selectedSquadra) {
       alert("Nessuna squadra selezionata");
@@ -398,11 +398,11 @@ function ListaSquadre() {
     
     const now = new Date();
     const dataScadenza = new Date(scadenza);
-    const threeMonthsFromNow = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+    const sixMonthsFromNow = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
     
     if (dataScadenza < now) {
       return 'text-danger'; // Past due
-    } else if (dataScadenza <= threeMonthsFromNow) {
+    } else if (dataScadenza <= sixMonthsFromNow) {
       return 'text-danger'; // Less than 3 months away
     }
     return 'text-success'; // More than 3 months away
@@ -538,13 +538,31 @@ function ListaSquadre() {
         />
       </td>
       <td>
-        <input
-          type="date"
-          value={giocatore.scadenza || ''}
-          onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
-          className={`form-control ${getScadenzaClass(giocatore.scadenza)}`}
-          disabled={!isAdmin}
-        />
+        {!isSerieA(giocatore) ? (
+  <>
+    <input
+      type="text"
+      className="form-control"
+      value=""
+      disabled
+      placeholder="Data bloccata"
+    />
+    {giocatore.scadenza && (
+      <div className="text-date small mt-1">
+        Tempo rimanente contratto: {getMesiRimanenti(giocatore.scadenza)} mesi
+      </div>
+    )}
+  </>
+) : (
+  <input
+    type="date"
+    value={giocatore.scadenza || ''}
+    onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
+    className={`form-control ${getScadenzaClass(giocatore.scadenza)}`}
+    disabled={!isAdmin}
+  />
+)}
+
       </td>
       <td>{giocatore.ammonizioni}</td>
       <td>{giocatore.assist}</td>
@@ -555,15 +573,16 @@ function ListaSquadre() {
       {isAdmin && (
         <td>
           <div className="btn-group" role="group">
-            {['+6', '+12', '+18'].map((filter) => (
-              <button
-                key={filter}
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleApplyFilter(giocatore.id, filter)}
-              >
-                {filter}
-              </button>
-            ))}
+         {['+6', '+12', '+18'].map((filter) => (
+     <button
+       key={filter}
+       className="btn btn-secondary btn-sm"
+      onClick={() => handleApplyFilter(giocatore.id, filter)}
+       disabled={!isSerieA(giocatore)}
+     >
+       {filter}
+     </button>
+   ))}
             <button
               className="btn btn-danger btn-sm"
               onClick={() => handleDelete(giocatore.id)}

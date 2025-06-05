@@ -13,13 +13,15 @@ import {
   FaUserPlus, FaLink, FaSync, FaSignInAlt, FaSignOutAlt, FaHistory, FaFileDownload,
   FaFileExport,
   FaFileArchive,
-  FaFileAlt
+  FaFileAlt,
+  FaDownload
 } from 'react-icons/fa';
 import { GiSoccerBall, GiWizardStaff, GiSoccerField } from 'react-icons/gi';
-import regolamentoPDF from '../Regolamenti/Regolamento Fan-Tavecchio nuovo.pdf';
+import regolamentoPDF from '../Regolamenti/Regolamento ufficiale.pdf';
 import classificaRanking from '../Regolamenti/classifica ranking 23.24.pdf';
 import alboDoro from '../Regolamenti/ALBO D ORO AGGIORNATO 2024.pdf';
-import resocontoStagione from '../Regolamenti/RESOCONTO STAGIONE 2324.pdf';
+import resocontoStagione from '../Regolamenti/RESOCONTO STAGIONE 2025.pdf';
+import { GrAnalytics } from 'react-icons/gr';
 
 function HomePage() {
   const [user, setUser] = useState(null);
@@ -89,7 +91,14 @@ function HomePage() {
           <FaHistory />
           <h3>Storico Scambi</h3>
         </Link>
-
+<Link to="/valutazioneScambio" className="home-card" data-aos="flip-down">
+  <GrAnalytics />
+  <h3>Statistiche Scambi</h3>
+</Link>
+<Link to="/download-backup" className="home-card" data-aos="flip-down">
+  <FaDownload />
+  <h3>Download Backup</h3>
+</Link>
         {isAdmin && (
           <>
             <Link to="/import" className="home-card admin-card" data-aos="zoom-in-up">

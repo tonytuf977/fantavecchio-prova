@@ -20,6 +20,8 @@ import GestioneScambiAdmin from './components/GestioneScambiAdmin';
 import StoricoScambi from './components/StoricoScambi';
 import { NotificheProvider } from './components/NotificheContext';
 import EmailNotification from './components/EmailNotification';
+import ValutazioneScambio from './components/ValutazioneScambio';
+import DownloadBackup from './components/DownloadBackup';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -90,6 +92,8 @@ function App() {
           />
           <Route path="/accettaScambi" element={<GestioneScambiAdmin />} />
           <Route path="/storicoScambi" element={<StoricoScambi />} />
+          <Route path="/valutazioneScambio" element={<ValutazioneScambio />} />
+          <Route path="/download-backup" element={<DownloadBackup />} />
         </Routes>
       </NotificheProvider>
     </Router>

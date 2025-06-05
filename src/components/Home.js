@@ -82,7 +82,10 @@ function HomePage() {
           <FaHistory />
           <h3>Storico Scambi</h3>
         </Link>
-
+     <Link to="/valutazioneScambio" className="home-card" data-aos="flip-down">
+          <FaHistory />
+          <h3>Statistiche Scambi</h3>
+        </Link>
         {isAdmin && (
           <>
             <Link to="/import" className="home-card admin-card" data-aos="zoom-in-up">

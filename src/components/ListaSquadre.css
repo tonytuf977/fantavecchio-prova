@@ -29,4 +29,7 @@
   .text-danger {
     color: #dc3545; /* Rosso */
   }
-  
+.text-date{
+  color: white;
+  background-color: #dc3545;
+}
