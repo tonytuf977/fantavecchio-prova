@@ -18,6 +18,7 @@ function ListaSquadre() {
   const [crediti, setCrediti] = useState('');
   const [rinnoviPendenti, setRinnoviPendenti] = useState({});
   const [modifiedPlayers, setModifiedPlayers] = useState({});
+  const [tempoCongelamento, setTempoCongelamento] = useState({});
 
   useEffect(() => {
     const auth = getAuth();
@@ -34,19 +35,16 @@ function ListaSquadre() {
             console.error("Errore nel recupero dell'utente corrente:", err);
           }
         };
-
         fetchCurrentUser();
       } else {
         setCurrentUser(null);
       }
     });
-
     return () => unsubscribe();
   }, []);
 
   const fetchRinnoviPendenti = useCallback(async () => {
     if (!selectedSquadra) return;
-    
     try {
       const rinnoviRef = collection(db, 'RinnoviContratti');
       const q = query(rinnoviRef, 
@@ -77,7 +75,6 @@ function ListaSquadre() {
           const giocatoriSnap = await getDocs(giocatoriRef);
           const giocatoriList = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setGiocatori(giocatoriList);
-
           await updateValoreRosa(selectedSquadra.id);
           setFilters(giocatoriList.reduce((acc, giocatore) => {
             acc[giocatore.id] = giocatore.currentFilter || null;
@@ -92,7 +89,6 @@ function ListaSquadre() {
           setIsLoading(false);
         }
       };
-
       fetchGiocatori();
     }
   }, [selectedSquadra, fetchRinnoviPendenti]);
@@ -103,7 +99,6 @@ function ListaSquadre() {
         fetchRinnoviPendenti();
       }
     }, 5000); // Aggiorna ogni 5 secondi
-
     return () => clearInterval(intervalId);
   }, [selectedSquadra, fetchRinnoviPendenti]);
 
@@ -112,9 +107,7 @@ function ListaSquadre() {
       const giocatoriRef = collection(db, `Squadre/${squadraId}/giocatori`);
       const giocatoriSnap = await getDocs(giocatoriRef);
       const giocatoriList = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
       const valoreTotaleRosa = giocatoriList.reduce((acc, giocatore) => acc + (parseFloat(giocatore.valoreAttuale) || 0), 0);
-
       const squadraRef = doc(db, 'Squadre', squadraId);
       await setDoc(squadraRef, { valoreRosa: valoreTotaleRosa, giocatori: giocatoriList.length }, { merge: true });
     } catch (err) {
@@ -143,96 +136,113 @@ function ListaSquadre() {
       alert("Nessuna squadra selezionata");
       return;
     }
-  
     try {
       const squadraRef = doc(db, 'Squadre', selectedSquadra.id);
       const newCrediti = Number(crediti) || 0;
       await setDoc(squadraRef, { crediti: newCrediti }, { merge: true });
-      
-      // Update the local state
       setSelectedSquadra(prev => ({ ...prev, crediti: newCrediti }));
-      
-      // Update the squadre array locally
-      const updatedSquadre = squadre.map(squadra => 
-        squadra.id === selectedSquadra.id ? { ...squadra, crediti: newCrediti } : squadra
-      );
-      // Instead of using setSquadre, we'll update the local state
-      // This won't persist across component remounts, but it will work for the current session
       setGiocatori(prevGiocatori => {
-        const updatedSquadra = updatedSquadre.find(s => s.id === selectedSquadra.id);
+        const updatedSquadra = squadre.find(s => s.id === selectedSquadra.id);
         return prevGiocatori.map(giocatore => ({
           ...giocatore,
           squadraCrediti: updatedSquadra.crediti
         }));
       });
-  
       alert("Crediti aggiornati con successo!");
     } catch (err) {
       console.error("Errore nell'aggiornamento dei crediti:", err);
       alert(`Errore nell'aggiornamento dei crediti: ${err.message}`);
     }
   };
-  const applyFilter = (giocatore, filter) => {
-    const baseDate = new Date(giocatore.dataPartenza || giocatore.scadenza);
-    const baseValueIniziale = parseFloat(giocatore.valoreInizialeOriginale || giocatore.valoreIniziale);
-    const baseValueAttuale = parseFloat(giocatore.valoreAttualeOriginale || giocatore.valoreAttuale);
-    let newDate = new Date(baseDate);
-    let newValueIniziale = baseValueIniziale;
-    let newValueAttuale = baseValueAttuale;
 
-    const calculateIncrease = (value, percentage) => {
-      return value * percentage;
-    };
+const applyFilter = (giocatore, filter) => {
+  const baseDate = new Date(giocatore.dataPartenza || giocatore.scadenza);
+  const baseValueIniziale = parseFloat(giocatore.valoreInizialeOriginale || giocatore.valoreIniziale);
+  const baseValueAttuale = parseFloat(giocatore.valoreAttualeOriginale || giocatore.valoreAttuale);
+  let newDate = new Date(baseDate);
+  let newValueIniziale = baseValueIniziale;
+  let newValueAttuale = baseValueAttuale;
 
-    switch (filter) {
-      case '+6':
-        newDate.setMonth(newDate.getMonth() + 6);
-        newValueIniziale += calculateIncrease(baseValueAttuale, 0.25);
-        break;
-      case '+12':
-        newDate.setMonth(newDate.getMonth() + 12);
-        newValueIniziale += calculateIncrease(baseValueAttuale, 0.50);
-        break;
-      case '+18':
-        newDate.setMonth(newDate.getMonth() + 18);
-        newValueIniziale += calculateIncrease(baseValueAttuale, 0.75);
-        break;
-      default:
-        return giocatore;
-    }
+  // Calcolo dell'aumento percentuale
+  switch (filter) {
+    case '+6':
+      newDate.setMonth(newDate.getMonth() + 6);
+      newValueIniziale += baseValueAttuale * 0.25; // +25%
+      break;
+    case '+12':
+      newDate.setMonth(newDate.getMonth() + 12);
+      newValueIniziale += baseValueAttuale * 0.50; // +50%
+      break;
+    case '+18':
+      newDate.setMonth(newDate.getMonth() + 18);
+      newValueIniziale += baseValueAttuale * 0.75; // +75%
+      break;
+    default:
+      return giocatore; // Nessun cambiamento se il filtro non è valido
+  }
 
-    newValueIniziale = Math.ceil(newValueIniziale);
+  // Arrotondamento del valore iniziale
+  newValueIniziale = Math.ceil(newValueIniziale);
+
+  // Calcolo del nuovo valore attuale
+  newValueAttuale = newValueIniziale;
+  newValueAttuale += 0.4 * giocatore.presenze;
+  newValueAttuale += 1 * giocatore.gol;
+  newValueAttuale += 0.5 * giocatore.assist;
+  newValueAttuale -= 0.5 * giocatore.ammonizioni;
+  newValueAttuale -= 1 * giocatore.espulsioni;
+
+  // Bonus per i portieri
+  if (giocatore.posizione === 'P') {
+    const mediaVotoEffect = (giocatore.voto - 6) * 50;
+    newValueAttuale += mediaVotoEffect;
+  }
+
+  // Assicurarsi che il valore attuale non sia inferiore al valore iniziale
+  if (newValueAttuale < newValueIniziale) {
     newValueAttuale = newValueIniziale;
-    newValueAttuale += 0.4 * giocatore.presenze;
-    newValueAttuale += 1 * giocatore.gol;
-    newValueAttuale += 0.5 * giocatore.assist;
-    newValueAttuale -= 0.5 * giocatore.ammonizioni;
-    newValueAttuale -= 1 * giocatore.espulsioni;
+  }
 
-    if (giocatore.posizione === 'P') {
-      const mediaVotoEffect = (giocatore.voto - 6) * 50;
-      newValueAttuale += mediaVotoEffect;
-    }
+  // Arrotondamento del valore attuale
+  newValueAttuale = Math.ceil(newValueAttuale);
 
-    if (newValueAttuale < newValueIniziale) {
-      newValueAttuale = newValueIniziale;
-    }
-
-    newValueAttuale = Math.ceil(newValueAttuale);
-
-    return {
-      ...giocatore,
-      valoreIniziale: newValueIniziale.toFixed(2),
-      valoreAttuale: newValueAttuale.toFixed(2),
-      scadenza: newDate.toISOString().split('T')[0],
-      currentFilter: filter,
-      valoreInizialeOriginale: baseValueIniziale,
-      valoreAttualeOriginale: baseValueAttuale,
-      dataPartenza: baseDate.toISOString().split('T')[0]
-    };
+  // Restituire il giocatore aggiornato
+  return {
+    ...giocatore,
+    valoreIniziale: newValueIniziale.toFixed(2),
+    valoreAttuale: newValueAttuale.toFixed(2),
+    scadenza: newDate.toISOString().split('T')[0],
+    currentFilter: filter,
+    valoreInizialeOriginale: baseValueIniziale,
+    valoreAttualeOriginale: baseValueAttuale,
+    dataPartenza: baseDate.toISOString().split('T')[0]
   };
+};
 
-const getMesiRimanenti = (scadenza) => {
+const handleApplyFilter = (giocatoreId, filter) => {
+  setGiocatori(prevGiocatori =>
+    prevGiocatori.map(giocatore => {
+      if (giocatore.id === giocatoreId) {
+        if (giocatore.currentFilter === filter) {
+          return giocatore; // Nessun cambiamento se il filtro è già applicato
+        }
+        const updatedGiocatore = applyFilter(giocatore, filter);
+        setFilters(prevFilters => ({
+          ...prevFilters,
+          [giocatoreId]: filter
+        }));
+        setModifiedPlayers(prev => ({
+          ...prev,
+          [giocatoreId]: updatedGiocatore
+        }));
+        return updatedGiocatore;
+      }
+      return giocatore;
+    })
+  );
+};
+
+  const getMesiRimanenti = (scadenza) => {
     if (!scadenza) return null;
     const oggi = new Date();
     const fine = new Date(scadenza);
@@ -245,29 +255,18 @@ const getMesiRimanenti = (scadenza) => {
     return giocatore.squadraSerieA && giocatore.squadraSerieA !== 'Svincolato *';
   };
 
-  const handleApplyFilter = (id, filter) => {
-    setGiocatori(prev => prev.map(g => {
-      if (g.id !== id || !isSerieA(g)) return g; // applica solo se Serie A
-      const newDate = new Date(g.scadenza || new Date());
-      if (filter === '+6') newDate.setMonth(newDate.getMonth() + 6);
-      if (filter === '+12') newDate.setMonth(newDate.getMonth() + 12);
-      if (filter === '+18') newDate.setMonth(newDate.getMonth() + 18);
-      return { ...g, scadenza: newDate.toISOString().split('T')[0] };
-    }));
-  };
+
+
   const handleSaveAll = async () => {
     if (!selectedSquadra) {
       alert("Nessuna squadra selezionata");
       return;
     }
-
     try {
       for (const [giocatoreId, modifications] of Object.entries(modifiedPlayers)) {
         const giocatore = giocatori.find(g => g.id === giocatoreId);
         if (!giocatore) continue;
-
         const updatedGiocatore = { ...giocatore, ...modifications };
-
         const giocatoreDati = {
           valoreAttuale: Number(updatedGiocatore.valoreAttuale) || 0,
           valoreIniziale: Number(updatedGiocatore.valoreIniziale) || 0,
@@ -288,14 +287,11 @@ const getMesiRimanenti = (scadenza) => {
           currentFilter: updatedGiocatore.currentFilter || null,
           squadra: selectedSquadra.nome
         };
-
         const giocatoreSquadraRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
         await setDoc(giocatoreSquadraRef, giocatoreDati, { merge: true });
-
         const giocatoreRef = doc(db, 'Giocatori', giocatoreId);
         await setDoc(giocatoreRef, giocatoreDati, { merge: true });
       }
-
       await updateValoreRosa(selectedSquadra.id);
       alert("Tutti i giocatori modificati sono stati aggiornati con successo!");
       setModifiedPlayers({});
@@ -310,20 +306,15 @@ const getMesiRimanenti = (scadenza) => {
       alert("Nessuna squadra selezionata");
       return;
     }
-
     const confirmDelete = window.confirm("Sei sicuro di voler eliminare questo giocatore?");
     if (confirmDelete) {
       try {
         const giocatoreRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
         await deleteDoc(giocatoreRef);
-
         const giocatoreGeneraleRef = doc(db, 'Giocatori', giocatoreId);
         await updateDoc(giocatoreGeneraleRef, { squadra: null });
-
         setGiocatori(prevGiocatori => prevGiocatori.filter(giocatore => giocatore.id !== giocatoreId));
-
         await updateValoreRosa(selectedSquadra.id);
-
         alert("Giocatore eliminato con successo!");
       } catch (err) {
         console.error("Errore nell'eliminazione del giocatore:", err);
@@ -334,19 +325,16 @@ const getMesiRimanenti = (scadenza) => {
 
   const exportFilteredSquadre = async () => {
     const workbook = XLSX.utils.book_new();
-  
     for (const squadra of squadre) {
       const squadraData = [
         ['Squadra:' + squadra.nome || 'N/A','Valore Rosa:' + squadra.valoreRosa || 'N/A','Crediti:' + squadra.crediti || 'N/A'],
         ['Id','Nome', 'Posizione', 'Gol', 'Presenze', 'Scadenza', 'ValoreIniziale', 'ValoreAttuale', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
       ];
-  
       try {
         const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
         const giocatoriSnap = await getDocs(giocatoriRef);
         const giocatori = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         giocatori.sort(sortGiocatoriByRuolo);
-        
         giocatori.forEach(giocatore => {
           squadraData.push([
             giocatore.id || 'N/A',
@@ -367,7 +355,6 @@ const getMesiRimanenti = (scadenza) => {
             squadra.id || 'N/A'
           ]);
         });
-  
         const worksheet = XLSX.utils.aoa_to_sheet(squadraData);
         XLSX.utils.book_append_sheet(workbook, worksheet, squadra.nome || `Squadra ${squadra.id}`);
       } catch (error) {
@@ -376,14 +363,12 @@ const getMesiRimanenti = (scadenza) => {
         XLSX.utils.book_append_sheet(workbook, errorWorksheet, `Errore Squadra ${squadra.id}`);
       }
     }
-  
     const generateExcelFileName = () => {
       const now = new Date();
       const date = now.toISOString().split('T')[0];
       const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
       return `FantaVecchio_squadre_${date}_${time}.xlsx`;
     };
-    
     XLSX.writeFile(workbook, generateExcelFileName());
   };
 
@@ -395,11 +380,9 @@ const getMesiRimanenti = (scadenza) => {
 
   const getScadenzaClass = (scadenza) => {
     if (!scadenza) return '';
-    
     const now = new Date();
     const dataScadenza = new Date(scadenza);
     const sixMonthsFromNow = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
-    
     if (dataScadenza < now) {
       return 'text-danger'; // Past due
     } else if (dataScadenza <= sixMonthsFromNow) {
@@ -427,6 +410,22 @@ const getMesiRimanenti = (scadenza) => {
     if (indexA === -1) return 1;
     if (indexB === -1) return -1;
     return indexA - indexB;
+  };
+
+  const handleSaveTempoCongelamento = async (giocatoreId, value) => {
+    try {
+      const giocatoreRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
+      await setDoc(giocatoreRef, { tempoCongelamento: value }, { merge: true });
+
+      const giocatoreGeneraleRef = doc(db, 'Giocatori', giocatoreId);
+      await setDoc(giocatoreGeneraleRef, { tempoCongelamento: value }, { merge: true });
+
+      setTempoCongelamento(prev => ({ ...prev, [giocatoreId]: value }));
+      alert("Tempo di congelamento salvato con successo!");
+    } catch (err) {
+      console.error("Errore nel salvataggio del tempo di congelamento:", err);
+      alert(`Errore nel salvataggio del tempo di congelamento: ${err.message}`);
+    }
   };
 
   return (
@@ -505,99 +504,115 @@ const getMesiRimanenti = (scadenza) => {
               </tr>
             </thead>
             <tbody>
-  {giocatori.sort(sortGiocatoriByRuolo).map((giocatore) => (
-    <tr 
-      key={giocatore.id} 
-      style={{ 
-        backgroundColor: rinnoviPendenti[giocatore.id] ? '#ffcccc' : '',
-        ...(modifiedPlayers[giocatore.id] ? { outline: '2px solid #007bff' } : {})
-      }}
-    >
-      <td>{giocatore.nome}</td>
-      <td>{giocatore.posizione}</td>
-      <td>{giocatore.gol}</td>
-      <td>{giocatore.presenze}</td>
-      <td>
-        <input
-          type="number"
-          value={giocatore.valoreIniziale}
-          onChange={(e) => handleEdit(giocatore.id, 'valoreIniziale', e.target.value)}
-          className="form-control"
-          min="0"
-          disabled={!isAdmin}
-        />
-      </td>
-      <td>
-        <input
-          type="number"
-          value={giocatore.valoreAttuale}
-          onChange={(e) => handleEdit(giocatore.id, 'valoreAttuale', e.target.value)}
-          className="form-control"
-          min="0"
-          disabled={!isAdmin}
-        />
-      </td>
-      <td>
-        {!isSerieA(giocatore) ? (
-  <>
-    <input
-      type="text"
-      className="form-control"
-      value=""
-      disabled
-      placeholder="Data bloccata"
-    />
-    {giocatore.scadenza && (
-      <div className="text-date small mt-1">
-        Tempo rimanente contratto: {getMesiRimanenti(giocatore.scadenza)} mesi
-      </div>
-    )}
-  </>
-) : (
-  <input
-    type="date"
-    value={giocatore.scadenza || ''}
-    onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
-    className={`form-control ${getScadenzaClass(giocatore.scadenza)}`}
-    disabled={!isAdmin}
-  />
-)}
-
-      </td>
-      <td>{giocatore.ammonizioni}</td>
-      <td>{giocatore.assist}</td>
-      <td>{giocatore.autogol}</td>
-      <td>{giocatore.espulsioni}</td>
-      <td>{giocatore.golSubiti}</td>
-      <td>{giocatore.voto}</td>
-      {isAdmin && (
-        <td>
-          <div className="btn-group" role="group">
-         {['+6', '+12', '+18'].map((filter) => (
-     <button
-       key={filter}
-       className="btn btn-secondary btn-sm"
-      onClick={() => handleApplyFilter(giocatore.id, filter)}
-       disabled={!isSerieA(giocatore)}
-     >
-       {filter}
-     </button>
-   ))}
-            <button
-              className="btn btn-danger btn-sm"
-              onClick={() => handleDelete(giocatore.id)}
-            >
-              Elimina
-            </button>
-          </div>
-          {rinnoviPendenti[giocatore.id] && (
-            <span className="badge bg-danger ms-2">Da Rinnovare sul profilo</span>
-          )}
-        </td>
-      )}
-    </tr>
-  ))}
-</tbody>
+              {giocatori.sort(sortGiocatoriByRuolo).map((giocatore) => (
+                <tr 
+                  key={giocatore.id} 
+                  style={{ 
+                    backgroundColor: rinnoviPendenti[giocatore.id] ? '#ffcccc' : '',
+                    ...(modifiedPlayers[giocatore.id] ? { outline: '2px solid #007bff' } : {})
+                  }}
+                >
+                  <td>{giocatore.nome}</td>
+                  <td>{giocatore.posizione}</td>
+                  <td>{giocatore.gol}</td>
+                  <td>{giocatore.presenze}</td>
+                  <td>
+                    <input
+                      type="number"
+                      value={giocatore.valoreIniziale}
+                      onChange={(e) => handleEdit(giocatore.id, 'valoreIniziale', e.target.value)}
+                      className="form-control"
+                      min="0"
+                      disabled={!isAdmin}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      value={giocatore.valoreAttuale}
+                      onChange={(e) => handleEdit(giocatore.id, 'valoreAttuale', e.target.value)}
+                      className="form-control"
+                      min="0"
+                      disabled={!isAdmin}
+                    />
+                  </td>
+                  <td>
+                    {!isSerieA(giocatore) ? (
+                      <>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value=""
+                          disabled
+                          placeholder="Data bloccata"
+                        />
+                        {isAdmin ? (
+                          <>
+                            <input
+                              type="text"
+                              className="form-control mt-2"
+                              placeholder="Inserisci tempo rimanente (es. 1 anno)"
+                              value={tempoCongelamento[giocatore.id] || giocatore.tempoCongelamento || ''}
+                              onChange={(e) => setTempoCongelamento(prev => ({ ...prev, [giocatore.id]: e.target.value }))}
+                            />
+                            <button
+                              className="btn btn-sm btn-primary mt-2"
+                              onClick={() => handleSaveTempoCongelamento(giocatore.id, tempoCongelamento[giocatore.id])}
+                              disabled={!tempoCongelamento[giocatore.id]}
+                            >
+                              Salva Tempo Congelamento
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-date small mt-1">
+                            Tempo rimanente contratto: {giocatore.tempoCongelamento || 'N/A'}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <input
+                        type="date"
+                        value={giocatore.scadenza || ''}
+                        onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
+                        className={`form-control ${getScadenzaClass(giocatore.scadenza)}`}
+                        disabled={!isAdmin}
+                      />
+                    )}
+                  </td>
+                  <td>{giocatore.ammonizioni}</td>
+                  <td>{giocatore.assist}</td>
+                  <td>{giocatore.autogol}</td>
+                  <td>{giocatore.espulsioni}</td>
+                  <td>{giocatore.golSubiti}</td>
+                  <td>{giocatore.voto}</td>
+                  {isAdmin && (
+                    <td>
+                      <div className="btn-group" role="group">
+                        {['+6', '+12', '+18'].map((filter) => (
+                          <button
+                            key={filter}
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleApplyFilter(giocatore.id, filter)}
+                            disabled={!isSerieA(giocatore)}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => handleDelete(giocatore.id)}
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                      {rinnoviPendenti[giocatore.id] && (
+                        <span className="badge bg-danger ms-2">Da Rinnovare sul profilo</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       )}
