@@ -4,17 +4,19 @@ import { doc, updateDoc, getDoc, collection, query, where, getDocs, setDoc } fro
 
 function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
   const [giocatoriDaRinnovare, setGiocatoriDaRinnovare] = useState([]);
+  const [giocatoriInProcesso, setGiocatoriInProcesso] = useState(new Set());
 
   useEffect(() => {
     const fetchGiocatoriDaRinnovare = async () => {
       const rinnoviRef = collection(db, 'RinnoviContratti');
-      const q = query(rinnoviRef, 
+      const q = query(
+        rinnoviRef,
         where('squadraId', '==', squadraId),
         where('stato', '==', 'In attesa')
       );
       const querySnapshot = await getDocs(q);
       const giocatoriIds = querySnapshot.docs.flatMap(doc => doc.data().giocatori);
-      
+
       const giocatoriPromises = giocatoriIds.map(id => getDoc(doc(db, 'Giocatori', id)));
       const giocatoriDocs = await Promise.all(giocatoriPromises);
       const giocatoriData = giocatoriDocs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -25,7 +27,32 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
   }, [squadraId]);
 
   const handleRinnovoContratto = async (giocatoreId, durata) => {
+    if (giocatoriInProcesso.has(giocatoreId)) {
+      console.warn("Rinnovo già in corso per il giocatore:", giocatoreId);
+      return;
+    }
+
     try {
+      // Aggiungi il giocatore al Set "in processo"
+      setGiocatoriInProcesso(prev => new Set(prev).add(giocatoreId));
+
+      // Verifica se il rinnovo è già stato completato nel database
+      const rinnoviRef = collection(db, 'RinnoviContratti');
+      const q = query(
+        rinnoviRef,
+        where('squadraId', '==', squadraId),
+        where('giocatori', 'array-contains', giocatoreId),
+        where('stato', '==', 'Completato')
+      );
+      const rinnoviSnapshot = await getDocs(q);
+
+      if (!rinnoviSnapshot.empty) {
+        console.warn("Il rinnovo per questo giocatore è già stato completato:", giocatoreId);
+        alert("Questo giocatore ha già un contratto rinnovato.");
+        return;
+      }
+
+      // Procedi con il rinnovo
       const giocatoreRef = doc(db, 'Giocatori', giocatoreId);
       const giocatoreDoc = await getDoc(giocatoreRef);
 
@@ -55,7 +82,7 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
       const datiAggiornati = {
         scadenza: scadenzaFormattata,
         valoreAttuale: nuovoValore,
-        valoreIniziale: nuovoValore
+        valoreIniziale: nuovoValore,
       };
 
       // Aggiorna il documento del giocatore nella raccolta Giocatori
@@ -66,25 +93,34 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
       await setDoc(giocatoreSquadraRef, datiAggiornati, { merge: true });
 
       // Aggiorna lo stato del rinnovo
-      const rinnoviRef = collection(db, 'RinnoviContratti');
-      const q = query(rinnoviRef, 
-        where('squadraId', '==', squadraId),
-        where('giocatori', 'array-contains', giocatoreId)
+      const rinnoviSnapshotPending = await getDocs(
+        query(
+          rinnoviRef,
+          where('squadraId', '==', squadraId),
+          where('giocatori', 'array-contains', giocatoreId),
+          where('stato', '==', 'In attesa')
+        )
       );
-      const rinnoviSnapshot = await getDocs(q);
-      if (!rinnoviSnapshot.empty) {
-        const rinnovoDoc = rinnoviSnapshot.docs[0];
+      if (!rinnoviSnapshotPending.empty) {
+        const rinnovoDoc = rinnoviSnapshotPending.docs[0];
         await updateDoc(doc(db, 'RinnoviContratti', rinnovoDoc.id), { stato: 'Completato' });
       }
 
       alert(`Contratto rinnovato per ${giocatore.nome} fino al ${scadenzaFormattata}. Nuovo valore: ${nuovoValore}€`);
       onRinnovoCompletato();
-      
+
       // Rimuovi il giocatore rinnovato dalla lista locale
       setGiocatoriDaRinnovare(prev => prev.filter(g => g.id !== giocatoreId));
     } catch (error) {
       console.error('Errore nel rinnovo del contratto:', error);
       alert('Si è verificato un errore nel rinnovo del contratto: ' + error.message);
+    } finally {
+      // Rimuovi il giocatore dal Set "in processo"
+      setGiocatoriInProcesso(prev => {
+        const newState = new Set(prev);
+        newState.delete(giocatoreId);
+        return newState;
+      });
     }
   };
 
@@ -97,8 +133,18 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
               <h5 className="card-title">{giocatore.nome}</h5>
               <p>Valore attuale: {giocatore.valoreAttuale}€</p>
               <p>Scadenza attuale: {giocatore.scadenza}</p>
-              <button className="btn btn-primary me-2" onClick={() => handleRinnovoContratto(giocatore.id, 12)}>Rinnova +12 mesi</button>
-              <button className="btn btn-secondary" onClick={() => handleRinnovoContratto(giocatore.id, 18)}>Rinnova +18 mesi</button>
+              <button
+                className="btn btn-primary me-2"
+                onClick={() => handleRinnovoContratto(giocatore.id, 12)}
+              >
+                Rinnova +12 mesi
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => handleRinnovoContratto(giocatore.id, 18)}
+              >
+                Rinnova +18 mesi
+              </button>
             </div>
           </div>
         ))

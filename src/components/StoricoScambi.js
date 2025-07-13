@@ -7,16 +7,28 @@ function StoricoScambi() {
   if (loading) return <div>Caricamento storico scambi...</div>;
   if (error) return <div>Errore nel caricamento dello storico scambi: {error}</div>;
 
+  // Ordina gli scambi per dataRichiesta (o dataScambio se presente)
+  const storicoScambiOrdinati = [...storicoScambi].sort((a, b) => {
+    const dataA = a.dataScambio || a.dataRichiesta;
+    const dataB = b.dataScambio || b.dataRichiesta;
+    return new Date(dataB) - new Date(dataA); // Ordine decrescente (più recenti prima)
+  });
+
   return (
     <div className="container mt-5">
       <h2>Storico Scambi</h2>
-      {storicoScambi.length === 0 ? (
+      {storicoScambiOrdinati.length === 0 ? (
         <p>Nessuno scambio trovato.</p>
       ) : (
-        storicoScambi.map((scambio, index) => (
+        storicoScambiOrdinati.map((scambio, index) => (
           <div key={index} className="card mb-3">
             <div className="card-body">
-              <h5 className="card-title">Data Proposta: {scambio.dataRichiesta ? new Date(scambio.dataRichiesta).toLocaleDateString() : 'Data non disponibile'}</h5>
+              <h5 className="card-title">
+                Data Proposta:{' '}
+                {scambio.dataRichiesta
+                  ? new Date(scambio.dataRichiesta).toLocaleDateString()
+                  : 'Data non disponibile'}
+              </h5>
               <p>Squadra Richiedente: {scambio.squadraRichiedente || 'N/A'}</p>
               <p>Squadra Avversaria: {scambio.squadraAvversaria || 'N/A'}</p>
               <div>
@@ -45,7 +57,12 @@ function StoricoScambi() {
               </div>
               <p>Stato: {scambio.stato || 'N/A'}</p>
               {scambio.stato === 'Completato' && (
-                <p>Data Scambio: {scambio.dataScambio ? new Date(scambio.dataScambio).toLocaleDateString() : 'Data non disponibile'}</p>
+                <p>
+                  Data Scambio:{' '}
+                  {scambio.dataScambio
+                    ? new Date(scambio.dataScambio).toLocaleDateString()
+                    : 'Data non disponibile'}
+                </p>
               )}
               {scambio.clausola && <p><strong>Clausola:</strong> {scambio.clausola}</p>}
               {scambio.valoriGiocatori && (
@@ -67,5 +84,3 @@ function StoricoScambi() {
 }
 
 export default StoricoScambi;
-
-

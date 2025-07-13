@@ -60,7 +60,7 @@ function GestioneScambiAdmin() {
       const richiestaRef = doc(db, 'RichiesteScambio', richiesta.id);
       await updateDoc(richiestaRef, { 
         accettataAdmin: true,
-        stato: 'Approvata'
+        stato: 'Approvata da admin'
       });
 
       // Recupero email degli utenti della squadra avversaria

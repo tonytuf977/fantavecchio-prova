@@ -48,11 +48,9 @@ function RichiestaScambio() {
           setSquadraUtente(null);
           setSquadreAvversarie([]);
         }
-
         // Check if the user is an admin
         const userDoc = utenti.find(u => u.id === user.uid);
         setIsAdmin(userDoc?.ruolo === 'admin');
-
         // Fetch the current state of "finestra scambi"
         const finestraScambiDoc = await getDocs(query(collection(db, 'Impostazioni'), where('nome', '==', 'finestraScambi')));
         if (!finestraScambiDoc.empty) {
@@ -96,15 +94,48 @@ function RichiestaScambio() {
     return `${year}/${month}/${day}`;
   };
 
+  const verificaRichiestaDuplicata = async () => {
+    if (!squadraUtente || !squadraSelezionata || giocatoriSelezionatiUtente.length === 0 || giocatoriSelezionatiAvversario.length === 0) {
+      return false; // Non è possibile verificare duplicati se i campi non sono compilati
+    }
+
+    try {
+      const richiesteRef = collection(db, 'RichiesteScambio');
+      const q = query(
+        richiesteRef,
+        where('squadraRichiedente', '==', squadraUtente.id),
+        where('squadraAvversaria', '==', squadraSelezionata),
+        where('giocatoriOfferti', '==', giocatoriSelezionatiUtente),
+        where('giocatoriRichiesti', '==', giocatoriSelezionatiAvversario),
+        where('stato', 'in', ['In attesa', 'Approvata da admin'])
+      );
+      const querySnapshot = await getDocs(q);
+      return !querySnapshot.empty;
+    } catch (error) {
+      console.error('Errore nella verifica delle richieste duplicate:', error);
+      return false;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!finestraScambiAperta) {
       setModalMessage('La finestra scambi è chiusa. Non è possibile effettuare richieste di scambio al momento.');
       setShowModal(true);
       return;
     }
+
     if (!squadraUtente || !squadraSelezionata || giocatoriSelezionatiUtente.length === 0 || giocatoriSelezionatiAvversario.length === 0) {
       setModalMessage('Seleziona tutti i campi necessari');
+      setShowModal(true);
+      return;
+    }
+
+    // Verifica se la richiesta è duplicata
+    const isDuplicata = await verificaRichiestaDuplicata();
+    if (isDuplicata) {
+      setModalMessage('Hai già inviato una richiesta di scambio identica. Non puoi inviarne un\'altra.');
       setShowModal(true);
       return;
     }
@@ -121,7 +152,6 @@ function RichiestaScambio() {
         accettataAdmin: false,
         accettataAvversario: false
       };
-
       const docRef = await addDoc(collection(db, 'RichiesteScambio'), richiestaScambio);
       console.log('Richiesta di scambio inviata con successo, ID:', docRef.id);
 
@@ -131,7 +161,6 @@ function RichiestaScambio() {
       if (adminSnapshot.empty) {
         throw new Error('Nessun admin trovato');
       }
-      
       const adminEmails = adminSnapshot.docs.map(doc => doc.data().email);
       const [primaryAdminEmail, ...ccAdminEmails] = adminEmails;
 
@@ -141,25 +170,20 @@ function RichiestaScambio() {
         subject: "Nuova Richiesta di Scambio da Approvare",
         message: `
           È stata creata una nuova richiesta di scambio che richiede la tua approvazione come Admin.
-      
           Dettagli della richiesta:
           Squadra richiedente: ${squadraUtente.nome}
           Squadra avversaria: ${squadreAvversarie.find(s => s.id === squadraSelezionata).nome}
-      
           Giocatori offerti:
           ${giocatoriSelezionatiUtente.map(id => {
             const giocatore = giocatoriUtente.find(g => g.id === id);
             return `- ${giocatore.nome} (Valore: ${giocatore.valoreAttuale || 'N/A'}€)`;
-          }).join('\n    ')}
-      
+          }).join('\n')}
           Giocatori richiesti:
           ${giocatoriSelezionatiAvversario.map(id => {
             const giocatore = giocatoriAvversari.find(g => g.id === id);
             return `- ${giocatore.nome} (Valore: ${giocatore.valoreAttuale || 'N/A'}€)`;
-          }).join('\n    ')}
-      
+          }).join('\n')}
           Clausola: ${clausola || 'Nessuna'}
-      
           Per favore, accedi alla piattaforma per approvare o rifiutare questa richiesta.
         `,
         cc_email: ccAdminEmails.join(', ') // Aggiungiamo gli altri admin in CC
@@ -171,14 +195,12 @@ function RichiestaScambio() {
         emailParams,
         EMAILJS_PUBLIC_KEY
       );
-
       console.log('Email inviata con successo:', response);
 
       setSquadraSelezionata('');
       setGiocatoriSelezionatiUtente([]);
       setGiocatoriSelezionatiAvversario([]);
       setClausola('');
-
       setModalMessage('Richiesta di scambio inviata con successo e notifica inviata agli admin');
       setShowModal(true);
     } catch (error) {
@@ -206,7 +228,6 @@ function RichiestaScambio() {
   if (loadingGiocatori) {
     return <div>Caricamento giocatori...</div>;
   }
-
   if (errorGiocatori) {
     return <div>Errore nel caricamento dei giocatori: {errorGiocatori}</div>;
   }
@@ -238,7 +259,6 @@ function RichiestaScambio() {
             ))}
           </select>
         </div>
-
         <div className="mb-3">
           <label className="form-label">Seleziona i tuoi giocatori da offrire:</label>
           <select 
@@ -252,7 +272,6 @@ function RichiestaScambio() {
             ))}
           </select>
         </div>
-
         <div className="mb-3">
           <label className="form-label">Seleziona i giocatori che vuoi ricevere:</label>
           <select 
@@ -266,7 +285,6 @@ function RichiestaScambio() {
             ))}
           </select>
         </div>
-
         <div className="mb-3">
           <label className="form-label">Clausole:</label>
           <textarea 
@@ -276,12 +294,10 @@ function RichiestaScambio() {
             placeholder="Inserisci eventuali clausole per lo scambio"
           ></textarea>
         </div>
-
         <button type="submit" className="btn btn-primary" disabled={!finestraScambiAperta}>
           Invia Richiesta di Scambio
         </button>
       </form>
-
       <Modal show={showModal} onHide={() => setShowModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>Notifica</Modal.Title>
