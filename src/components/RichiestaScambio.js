@@ -28,6 +28,8 @@ function RichiestaScambio() {
   const { squadre } = useSquadre();
   const { giocatori, loading: loadingGiocatori, error: errorGiocatori } = useGiocatori();
   const { utenti } = useUtenti();
+  
+
 
   useEffect(() => {
     emailjs.init(EMAILJS_PUBLIC_KEY);
@@ -35,6 +37,11 @@ function RichiestaScambio() {
 
   const fetchSquadraUtente = useCallback(async () => {
     const user = auth.currentUser;
+     if (!user) {
+      setModalMessage("Per effettuare uno scambio devi prima accedere (regola anti D'avino)");
+      setShowModal(true);
+      return;
+    }
     if (user) {
       try {
         const squadraQuery = query(collection(db, 'Squadre'), where('utenti', 'array-contains', user.uid));
@@ -48,6 +55,8 @@ function RichiestaScambio() {
           setSquadraUtente(null);
           setSquadreAvversarie([]);
         }
+        
+        
         // Check if the user is an admin
         const userDoc = utenti.find(u => u.id === user.uid);
         setIsAdmin(userDoc?.ruolo === 'admin');
@@ -71,6 +80,7 @@ function RichiestaScambio() {
   }, [fetchSquadraUtente]);
 
   useEffect(() => {
+    
     if (squadraUtente) {
       const giocatoriSquadraUtente = giocatori.filter(g => g.squadra === squadraUtente.id);
       setGiocatoriUtente(giocatoriSquadraUtente);

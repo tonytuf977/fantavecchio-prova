@@ -63,6 +63,7 @@ function GestioneScambiAdmin() {
         stato: 'Approvata da admin'
       });
 
+
       // Recupero email degli utenti della squadra avversaria
       const utentiRef = collection(db, 'Utenti');
       const q = query(utentiRef, where('idSquadra', '==', richiesta.squadraAvversaria));

@@ -160,7 +160,16 @@ function Profilo() {
       console.warn("Richiesta già elaborata:", richiesta.id);
       return;
     }
+// Rimuovi la data di scadenza dai giocatori coinvolti nello scambio
+    const rimuoviScadenza = async (giocatori) => {
+      for (const giocatore of giocatori) {
+        const giocatoreRef = doc(db, 'Giocatori', giocatore.id);
+        await updateDoc(giocatoreRef, { scadenza: null });
+      }
+    };
 
+    await rimuoviScadenza(richiesta.giocatoriOfferti);
+    await rimuoviScadenza(richiesta.giocatoriRichiesti);
     try {
       // Aggiungi la richiesta al Set "in elaborazione"
       setRichiesteElaborate(prev => new Set(prev).add(richiesta.id));
