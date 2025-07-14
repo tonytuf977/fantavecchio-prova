@@ -1,4 +1,4 @@
-import React, { useState, useEffect,getDocs,where,query,db,collection,doc,getDoc } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Home from './components/HomePage';
 import ListaGiocatori from './components/ListaGiocatori';
@@ -23,7 +23,6 @@ import EmailNotification from './components/EmailNotification';
 import ValutazioneScambio from './components/ValutazioneScambio';
 import DownloadBackup from './components/DownloadBackup';
 
-
 function App() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -31,91 +30,25 @@ function App() {
   const { utenti, loading: utentiLoading } = useUtenti();
   const [emailNotification, setEmailNotification] = useState(null);
 
-  // Stati aggiuntivi per gestire richieste di scambio, notifiche e rinnovi
-  const [richiesteScambio, setRichiesteScambio] = useState([]);
-  const [notificheCount, setNotificheCount] = useState(0);
-  const [giocatoriDaRinnovare, setGiocatoriDaRinnovare] = useState([]);
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        const userRecord = utenti.find(u => u.email === currentUser.email);
-        setIsAdmin(userRecord?.ruolo === 'admin');
-        setLoading(false);
-      } else {
-        setUser(null);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
         setIsAdmin(false);
         setLoading(false);
       }
     });
 
     return () => unsubscribe();
-  }, [utenti]);
-
-  // Funzione per caricare le richieste di scambio in sospeso
-  const fetchRichiesteScambio = async () => {
-    if (!user) return;
-    try {
-      const richiesteRef = collection(db, 'RichiesteScambio');
-      const q = query(
-        richiesteRef,
-        where('squadraAvversaria', '==', user.uid),
-        where('stato', '==', 'In attesa')
-      );
-      const querySnapshot = await getDocs(q);
-      const richieste = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setRichiesteScambio(richieste);
-    } catch (error) {
-      console.error('Errore nel recupero delle richieste di scambio:', error);
-    }
-  };
-
-  // Funzione per caricare i giocatori da rinnovare
-  const fetchGiocatoriDaRinnovare = async () => {
-    if (!user) return;
-    try {
-      const rinnoviRef = collection(db, 'RinnoviContratti');
-      const q = query(
-        rinnoviRef,
-        where('squadraId', '==', user.uid),
-        where('stato', '==', 'In attesa')
-      );
-      const querySnapshot = await getDocs(q);
-      const giocatoriIds = querySnapshot.docs.flatMap(doc => doc.data().giocatori);
-      const giocatoriPromises = giocatoriIds.map(id => getDoc(doc(db, 'Giocatori', id)));
-      const giocatoriDocs = await Promise.all(giocatoriPromises);
-      const giocatori = giocatoriDocs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setGiocatoriDaRinnovare(giocatori);
-    } catch (error) {
-      console.error('Errore nel recupero dei giocatori da rinnovare:', error);
-    }
-  };
-
-  // Funzione per aggiornare il conteggio delle notifiche
-  const updateNotificheCount = async () => {
-    if (!user) return;
-    try {
-      const richiesteRef = collection(db, 'RichiesteScambio');
-      const q = query(
-        richiesteRef,
-        where('squadraAvversaria', '==', user.uid),
-        where('stato', '==', 'In attesa')
-      );
-      const querySnapshot = await getDocs(q);
-      setNotificheCount(querySnapshot.size);
-    } catch (error) {
-      console.error('Errore nell\'aggiornamento del conteggio delle notifiche:', error);
-    }
-  };
+  }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchRichiesteScambio();
-      fetchGiocatoriDaRinnovare();
-      updateNotificheCount();
+    if (user && !utentiLoading) {
+      const userRecord = utenti.find(u => u.email === user.email);
+      setIsAdmin(userRecord?.ruolo === 'admin');
+      setLoading(false);
     }
-  }, [user]);
+  }, [user, utenti, utentiLoading]);
 
   const handleEmailNotification = (message, isSuccess) => {
     setEmailNotification({ message, isSuccess });
@@ -151,22 +84,7 @@ function App() {
           <Route path="/modifica-giocatore" element={<ModificaGiocatore />} />
           <Route path="/registrazione" element={<Registrazione />} />
           <Route path="/login" element={<Login />} />
-          <Route 
-            path="/profilo" 
-            element={
-              <Profili 
-                user={user} 
-                richiesteScambio={richiesteScambio} 
-                notificheCount={notificheCount} 
-                giocatoriDaRinnovare={giocatoriDaRinnovare} 
-                onUpdate={() => {
-                  fetchRichiesteScambio();
-                  fetchGiocatoriDaRinnovare();
-                  updateNotificheCount();
-                }} 
-              /> 
-            } 
-          />
+          <Route path="/profilo" element={<Profili />} />
           <Route path="/associa" element={<AssociaSquadreUtenti />} />
           <Route 
             path="/richiestaScambio" 
