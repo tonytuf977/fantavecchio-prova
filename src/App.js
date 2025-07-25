@@ -22,6 +22,7 @@ import { NotificheProvider } from './components/NotificheContext';
 import EmailNotification from './components/EmailNotification';
 import ValutazioneScambio from './components/ValutazioneScambio';
 import DownloadBackup from './components/DownloadBackup';
+import Dado from './components/dado';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -74,6 +75,7 @@ function App() {
           <Route path="/home" element={<Home />} />
           <Route path="/giocatori" element={<ListaGiocatori />} />
           <Route path="/squadre" element={<ListaSquadre />} />
+          <Route path="/Dado" element={<Dado />} />
           {isAdmin && (
             <>
               <Route path="/import" element={<ImportExcel />} />

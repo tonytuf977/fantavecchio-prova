@@ -16,7 +16,7 @@ import {
   FaFileAlt,
   FaDownload
 } from 'react-icons/fa';
-import { GiSoccerBall, GiWizardStaff, GiSoccerField } from 'react-icons/gi';
+import { GiSoccerBall, GiWizardStaff, GiSoccerField, GiPerspectiveDiceSixFacesSix } from 'react-icons/gi';
 import regolamentoPDF from '../Regolamenti/Regolamento ufficiale.pdf';
 import classificaRanking from '../Regolamenti/classifica ranking 23.24.pdf';
 import alboDoro from '../Regolamenti/ALBO D ORO AGGIORNATO 2024.pdf';
@@ -142,6 +142,11 @@ function HomePage() {
           <FaFileExport />
           <h3>Resoconto Stagione</h3>
         </a>
+              <Link to="/Dado" className="home-card" data-aos="flip-down">
+          {/* Icona dado */}
+          <GiPerspectiveDiceSixFacesSix />
+          <h3>Dado Eliminazione</h3>
+        </Link>
       </div>
 
       <div className="home-footer">
