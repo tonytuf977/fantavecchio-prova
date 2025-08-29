@@ -157,54 +157,33 @@ function ListaSquadre() {
 
 const applyFilter = (giocatore, filter) => {
   const baseDate = new Date(giocatore.dataPartenza || giocatore.scadenza);
-  const baseValueIniziale = parseFloat(giocatore.valoreInizialeOriginale || giocatore.valoreIniziale);
-  const baseValueAttuale = parseFloat(giocatore.valoreAttualeOriginale || giocatore.valoreAttuale);
+  const baseValueAttuale = parseFloat(giocatore.valoreAttuale);
   let newDate = new Date(baseDate);
-  let newValueIniziale = baseValueIniziale;
   let newValueAttuale = baseValueAttuale;
 
-  // Calcolo dell'aumento percentuale
+  // Calcolo dell'aumento percentuale diretto sul valore attuale
   switch (filter) {
     case '+6':
       newDate.setMonth(newDate.getMonth() + 6);
-      newValueIniziale += baseValueAttuale * 0.25; // +25%
+      newValueAttuale = baseValueAttuale * 1.25; // +25%
       break;
     case '+12':
       newDate.setMonth(newDate.getMonth() + 12);
-      newValueIniziale += baseValueAttuale * 0.50; // +50%
+      newValueAttuale = baseValueAttuale * 1.50; // +50%
       break;
     case '+18':
       newDate.setMonth(newDate.getMonth() + 18);
-      newValueIniziale += baseValueAttuale * 0.75; // +75%
+      newValueAttuale = baseValueAttuale * 1.75; // +75%
       break;
     default:
       return giocatore; // Nessun cambiamento se il filtro non è valido
   }
 
-  // Arrotondamento del valore iniziale
-  newValueIniziale = Math.ceil(newValueIniziale);
-
-  // Calcolo del nuovo valore attuale
-  newValueAttuale = newValueIniziale;
-  newValueAttuale += 0.4 * giocatore.presenze;
-  newValueAttuale += 1 * giocatore.gol;
-  newValueAttuale += 0.5 * giocatore.assist;
-  newValueAttuale -= 0.5 * giocatore.ammonizioni;
-  newValueAttuale -= 1 * giocatore.espulsioni;
-
-  // Bonus per i portieri
-  if (giocatore.posizione === 'P') {
-    const mediaVotoEffect = (giocatore.voto - 6) * 50;
-    newValueAttuale += mediaVotoEffect;
-  }
-
-  // Assicurarsi che il valore attuale non sia inferiore al valore iniziale
-  if (newValueAttuale < newValueIniziale) {
-    newValueAttuale = newValueIniziale;
-  }
-
   // Arrotondamento del valore attuale
   newValueAttuale = Math.ceil(newValueAttuale);
+
+  // Il valore iniziale diventa uguale al nuovo valore attuale
+  const newValueIniziale = newValueAttuale;
 
   // Restituire il giocatore aggiornato
   return {
@@ -213,8 +192,8 @@ const applyFilter = (giocatore, filter) => {
     valoreAttuale: newValueAttuale.toFixed(2),
     scadenza: newDate.toISOString().split('T')[0],
     currentFilter: filter,
-    valoreInizialeOriginale: baseValueIniziale,
-    valoreAttualeOriginale: baseValueAttuale,
+    valoreInizialeOriginale: parseFloat(giocatore.valoreInizialeOriginale || giocatore.valoreIniziale),
+    valoreAttualeOriginale: parseFloat(giocatore.valoreAttualeOriginale || giocatore.valoreAttuale),
     dataPartenza: baseDate.toISOString().split('T')[0]
   };
 };
