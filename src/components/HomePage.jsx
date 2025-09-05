@@ -6,7 +6,7 @@ import { auth } from '../firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
-import { useNotifiche } from '../components/NotificheContext';
+import { useNotifiche } from './NotificheContext';
 
 import { 
   FaUsers, FaRegListAlt, FaExchangeAlt, FaFileExcel, FaUndo, 
