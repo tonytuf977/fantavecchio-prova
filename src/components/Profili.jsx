@@ -59,15 +59,28 @@ function Profilo() {
     const richieste = await Promise.all(querySnapshot.docs.map(async docSnapshot => {
       const data = docSnapshot.data();
       const squadraRichiedente = await getDoc(doc(db, 'Squadre', data.squadraRichiedente));
-      const giocatoriOfferti = await Promise.all(data.giocatoriOfferti.map(id => getDoc(doc(db, 'Giocatori', id))));
-      const giocatoriRichiesti = await Promise.all(data.giocatoriRichiesti.map(id => getDoc(doc(db, 'Giocatori', id))));
-      return {
-        id: docSnapshot.id,
-        ...data,
-        squadraRichiedenteNome: squadraRichiedente.data().nome,
-        giocatoriOfferti: giocatoriOfferti.map(g => ({ id: g.id, ...g.data() })),
-        giocatoriRichiesti: giocatoriRichiesti.map(g => ({ id: g.id, ...g.data() }))
-      };
+      
+      if (data.tipoScambio === 'crediti') {
+        // Gestione scambio a crediti
+        const giocatoreRichiesto = await getDoc(doc(db, 'Giocatori', data.giocatoreRichiesto));
+        return {
+          id: docSnapshot.id,
+          ...data,
+          squadraRichiedenteNome: squadraRichiedente.data().nome,
+          giocatoreRichiestoDettagli: giocatoreRichiesto.exists() ? { id: giocatoreRichiesto.id, ...giocatoreRichiesto.data() } : null
+        };
+      } else {
+        // Gestione scambio tradizionale a giocatori
+        const giocatoriOfferti = await Promise.all((data.giocatoriOfferti || []).map(id => getDoc(doc(db, 'Giocatori', id))));
+        const giocatoriRichiesti = await Promise.all((data.giocatoriRichiesti || []).map(id => getDoc(doc(db, 'Giocatori', id))));
+        return {
+          id: docSnapshot.id,
+          ...data,
+          squadraRichiedenteNome: squadraRichiedente.data().nome,
+          giocatoriOfferti: giocatoriOfferti.map(g => ({ id: g.id, ...g.data() })),
+          giocatoriRichiesti: giocatoriRichiesti.map(g => ({ id: g.id, ...g.data() }))
+        };
+      }
     }));
     setRichiesteScambio(richieste);
   };
@@ -101,38 +114,102 @@ function Profilo() {
     setNotificheCount(richiesteScambio.length);
   };
 
-  const scambiaGiocatori = async (squadraRichiedenteId, squadraAvversariaId, giocatoriOfferti, giocatoriRichiesti) => {
-    for (const giocatore of giocatoriOfferti) {
-      await aggiornaSquadraGiocatore(giocatore.id, squadraRichiedenteId, squadraAvversariaId);
+  const aggiornaSquadraGiocatore = async (giocatoreId, daSquadraId, aSquadraId) => {
+    try {
+      // Rimuovi il giocatore dalla squadra di origine
+      if (daSquadraId) {
+        const giocatoreDaRef = doc(db, `Squadre/${daSquadraId}/giocatori`, giocatoreId);
+        await deleteDoc(giocatoreDaRef);
+      }
+
+      // Ottieni i dati del giocatore dalla collezione principale
+      const giocatoreRef = doc(db, 'Giocatori', giocatoreId);
+      const giocatoreSnap = await getDoc(giocatoreRef);
+      
+      if (!giocatoreSnap.exists()) {
+        throw new Error(`Giocatore con ID ${giocatoreId} non trovato`);
+      }
+
+      const giocatoreData = giocatoreSnap.data();
+
+      // Aggiorna la squadra del giocatore nella collezione principale
+      await updateDoc(giocatoreRef, { squadra: aSquadraId });
+
+      // Aggiungi il giocatore alla nuova squadra
+      const giocatoreARef = doc(db, `Squadre/${aSquadraId}/giocatori`, giocatoreId);
+      await setDoc(giocatoreARef, {
+        ...giocatoreData,
+        squadra: aSquadraId
+      });
+
+      console.log(`Giocatore ${giocatoreId} spostato da ${daSquadraId} a ${aSquadraId}`);
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento della squadra del giocatore:', error);
+      throw error;
     }
-    for (const giocatore of giocatoriRichiesti) {
-      await aggiornaSquadraGiocatore(giocatore.id, squadraAvversariaId, squadraRichiedenteId);
+  };
+
+  const aggiornaRosaSquadra = async (squadraId) => {
+    try {
+      const giocatoriRef = collection(db, `Squadre/${squadraId}/giocatori`);
+      const giocatoriSnap = await getDocs(giocatoriRef);
+      const giocatoriList = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      const valoreTotaleRosa = giocatoriList.reduce((acc, giocatore) => 
+        acc + (parseFloat(giocatore.valoreAttuale) || 0), 0
+      );
+      
+      const squadraRef = doc(db, 'Squadre', squadraId);
+      await updateDoc(squadraRef, { 
+        valoreRosa: valoreTotaleRosa,
+        numeroGiocatori: giocatoriList.length
+      });
+      
+      console.log(`Rosa aggiornata per squadra ${squadraId}: ${valoreTotaleRosa}€`);
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento del valore della rosa:', error);
+      throw error;
+    }
+  };
+
+  const scambiaGiocatori = async (squadraRichiedenteId, squadraAvversariaId, giocatoriOfferti, giocatoriRichiesti) => {
+    if (giocatoriOfferti && Array.isArray(giocatoriOfferti)) {
+      for (const giocatore of giocatoriOfferti) {
+        await aggiornaSquadraGiocatore(giocatore.id, squadraRichiedenteId, squadraAvversariaId);
+      }
+    }
+    if (giocatoriRichiesti && Array.isArray(giocatoriRichiesti)) {
+      for (const giocatore of giocatoriRichiesti) {
+        await aggiornaSquadraGiocatore(giocatore.id, squadraAvversariaId, squadraRichiedenteId);
+      }
     }
     await aggiornaRosaSquadra(squadraRichiedenteId);
     await aggiornaRosaSquadra(squadraAvversariaId);
   };
 
-  const aggiornaSquadraGiocatore = async (giocatoreId, vecchiaSquadraId, nuovaSquadraId) => {
-    const giocatoreRef = doc(db, 'Giocatori', giocatoreId);
-    await updateDoc(giocatoreRef, { squadra: nuovaSquadraId });
-    const vecchiaSquadraGiocatoreRef = doc(db, 'Squadre', vecchiaSquadraId, 'giocatori', giocatoreId);
-    await deleteDoc(vecchiaSquadraGiocatoreRef);
-    const giocatoreSnap = await getDoc(giocatoreRef);
-    const giocatoreData = giocatoreSnap.data();
-    const nuovaSquadraGiocatoreRef = doc(db, 'Squadre', nuovaSquadraId, 'giocatori', giocatoreId);
-    await setDoc(nuovaSquadraGiocatoreRef, giocatoreData);
-  };
-
-  const aggiornaRosaSquadra = async (squadraId) => {
-    const giocatoriRef = collection(db, 'Squadre', squadraId, 'giocatori');
-    const snapshot = await getDocs(giocatoriRef);
-    const giocatori = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const valoreRosa = giocatori.reduce((acc, g) => acc + (g.valoreAttuale || 0), 0);
-    const squadraRef = doc(db, 'Squadre', squadraId);
-    await updateDoc(squadraRef, {
-      numeroGiocatori: giocatori.length,
-      valoreRosa: valoreRosa
+  const scambiaCrediti = async (squadraRichiedenteId, squadraAvversariaId, giocatoreRichiesto, creditiOfferti) => {
+    // Sposta il giocatore dalla squadra avversaria a quella richiedente
+    await aggiornaSquadraGiocatore(giocatoreRichiesto.id, squadraAvversariaId, squadraRichiedenteId);
+    
+    // Aggiorna i crediti delle squadre
+    const squadraRichiedenteRef = doc(db, 'Squadre', squadraRichiedenteId);
+    const squadraAvversariaRef = doc(db, 'Squadre', squadraAvversariaId);
+    
+    const squadraRichiedenteSnap = await getDoc(squadraRichiedenteRef);
+    const squadraAvversariaSnap = await getDoc(squadraAvversariaRef);
+    
+    const creditiAttualiRichiedente = squadraRichiedenteSnap.data().crediti || 0;
+    const creditiAttualiAvversaria = squadraAvversariaSnap.data().crediti || 0;
+    
+    await updateDoc(squadraRichiedenteRef, { 
+      crediti: creditiAttualiRichiedente - creditiOfferti 
     });
+    await updateDoc(squadraAvversariaRef, { 
+      crediti: creditiAttualiAvversaria + creditiOfferti 
+    });
+    
+    await aggiornaRosaSquadra(squadraRichiedenteId);
+    await aggiornaRosaSquadra(squadraAvversariaId);
   };
 
   const ricaricaDatiSquadra = async () => {
@@ -160,16 +237,17 @@ function Profilo() {
       console.warn("Richiesta già elaborata:", richiesta.id);
       return;
     }
-// Rimuovi la data di scadenza dai giocatori coinvolti nello scambio
+
+    // Rimuovi la data di scadenza dai giocatori coinvolti nello scambio
     const rimuoviScadenza = async (giocatori) => {
-      for (const giocatore of giocatori) {
-        const giocatoreRef = doc(db, 'Giocatori', giocatore.id);
-        await updateDoc(giocatoreRef, { scadenza: null });
+      if (Array.isArray(giocatori)) {
+        for (const giocatore of giocatori) {
+          const giocatoreRef = doc(db, 'Giocatori', giocatore.id);
+          await updateDoc(giocatoreRef, { scadenza: null });
+        }
       }
     };
 
-    await rimuoviScadenza(richiesta.giocatoriOfferti);
-    await rimuoviScadenza(richiesta.giocatoriRichiesti);
     try {
       // Aggiungi la richiesta al Set "in elaborazione"
       setRichiesteElaborate(prev => new Set(prev).add(richiesta.id));
@@ -198,15 +276,33 @@ function Profilo() {
         dataScambio: new Date().toISOString().split('T')[0]
       });
 
-      await scambiaGiocatori(
-        richiesta.squadraRichiedente,
-        richiesta.squadraAvversaria,
-        richiesta.giocatoriOfferti,
-        richiesta.giocatoriRichiesti
-      );
+      if (richiesta.tipoScambio === 'crediti') {
+        // Gestione scambio a crediti
+        await rimuoviScadenza([richiesta.giocatoreRichiestoDettagli]);
+        await scambiaCrediti(
+          richiesta.squadraRichiedente,
+          richiesta.squadraAvversaria,
+          richiesta.giocatoreRichiestoDettagli,
+          richiesta.creditiOfferti
+        );
+        
+        // Crea richiesta di rinnovo per la squadra che riceve il giocatore (squadra richiedente)
+        await creaRichiestaRinnovo(richiesta.squadraRichiedente, [richiesta.giocatoreRichiestoDettagli]);
+      } else {
+        // Gestione scambio tradizionale a giocatori
+        await rimuoviScadenza(richiesta.giocatoriOfferti);
+        await rimuoviScadenza(richiesta.giocatoriRichiesti);
+        
+        await scambiaGiocatori(
+          richiesta.squadraRichiedente,
+          richiesta.squadraAvversaria,
+          richiesta.giocatoriOfferti,
+          richiesta.giocatoriRichiesti
+        );
 
-      await creaRichiestaRinnovo(richiesta.squadraRichiedente, richiesta.giocatoriRichiesti);
-      await creaRichiestaRinnovo(richiesta.squadraAvversaria, richiesta.giocatoriOfferti);
+        await creaRichiestaRinnovo(richiesta.squadraRichiedente, richiesta.giocatoriRichiesti);
+        await creaRichiestaRinnovo(richiesta.squadraAvversaria, richiesta.giocatoriOfferti);
+      }
 
       setModalMessage('Scambio accettato e completato! Controlla i giocatori da rinnovare.');
       setShowModal(true);
@@ -307,19 +403,35 @@ function Profilo() {
         richiesteScambio.map(richiesta => (
           <div key={richiesta.id} className="card mb-3">
             <div className="card-body">
-              <h5 className="card-title">Richiesta di Scambio da {richiesta.squadraRichiedenteNome}</h5>
-              <p><strong>Giocatori offerti:</strong></p>
-              <ul>
-                {richiesta.giocatoriOfferti.map(g => (
-                  <li key={g.id}>{g.nome} (Valore attuale: {g.valoreAttuale || 'N/A'}€)</li>
-                ))}
-              </ul>
-              <p><strong>Giocatori richiesti:</strong></p>
-              <ul>
-                {richiesta.giocatoriRichiesti.map(g => (
-                  <li key={g.id}>{g.nome} (Valore attuale: {g.valoreAttuale || 'N/A'}€)</li>
-                ))}
-              </ul>
+              <h5 className="card-title">
+                Richiesta di {richiesta.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'} da {richiesta.squadraRichiedenteNome}
+              </h5>
+              
+              {richiesta.tipoScambio === 'crediti' ? (
+                <>
+                  <p><strong>Giocatore richiesto:</strong></p>
+                  <ul>
+                    <li>{richiesta.giocatoreRichiestoDettagli?.nome || 'Nome non disponibile'} (Valore attuale: {richiesta.giocatoreRichiestoDettagli?.valoreAttuale || 'N/A'}€)</li>
+                  </ul>
+                  <p><strong>Crediti offerti:</strong> {richiesta.creditiOfferti}€</p>
+                </>
+              ) : (
+                <>
+                  <p><strong>Giocatori offerti:</strong></p>
+                  <ul>
+                    {(richiesta.giocatoriOfferti || []).map(g => (
+                      <li key={g.id}>{g.nome} (Valore attuale: {g.valoreAttuale || 'N/A'}€)</li>
+                    ))}
+                  </ul>
+                  <p><strong>Giocatori richiesti:</strong></p>
+                  <ul>
+                    {(richiesta.giocatoriRichiesti || []).map(g => (
+                      <li key={g.id}>{g.nome} (Valore attuale: {g.valoreAttuale || 'N/A'}€)</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              
               {richiesta.clausola && <p><strong>Clausola:</strong> {richiesta.clausola}</p>}
               <button
                 className="btn btn-success me-2"

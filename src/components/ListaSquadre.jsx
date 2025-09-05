@@ -11,6 +11,8 @@ function ListaSquadre() {
   const { squadre, setSquadre, isLoading: squadreLoading, error: squadreError } = useSquadre();
   const [selectedSquadra, setSelectedSquadra] = useState(null);
   const [giocatori, setGiocatori] = useState([]);
+  const [listaGiovani, setListaGiovani] = useState([]);
+  const [giocatoriSelezionatiGiovani, setGiocatoriSelezionatiGiovani] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
@@ -73,8 +75,26 @@ function ListaSquadre() {
         try {
           const giocatoriRef = collection(db, `Squadre/${selectedSquadra.id}/giocatori`);
           const giocatoriSnap = await getDocs(giocatoriRef);
-          const giocatoriList = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const giocatoriList = giocatoriSnap.docs.map(doc => {
+            const data = { id: doc.id, ...doc.data() };
+            // Imposta "campionato" come default se non c'è nessuna competizione
+            if (!data.competizione || (Array.isArray(data.competizione) && data.competizione.length === 0)) {
+              data.competizione = ['campionato'];
+            }
+            // Converte competizione singola in array per retrocompatibilità
+            if (data.competizione && !Array.isArray(data.competizione)) {
+              data.competizione = [data.competizione];
+            }
+            return data;
+          });
           setGiocatori(giocatoriList);
+
+          // Fetch lista giovani
+          const listaGiovaniRef = collection(db, `Squadre/${selectedSquadra.id}/listaGiovani`);
+          const listaGiovaniSnap = await getDocs(listaGiovaniRef);
+          const listaGiovaniList = listaGiovaniSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setListaGiovani(listaGiovaniList);
+
           await updateValoreRosa(selectedSquadra.id);
           setFilters(giocatoriList.reduce((acc, giocatore) => {
             acc[giocatore.id] = giocatore.currentFilter || null;
@@ -129,6 +149,25 @@ function ListaSquadre() {
       ...prev,
       [giocatoreId]: { ...(prev[giocatoreId] || {}), [field]: value }
     }));
+  };
+
+  // Funzione per ottenere l'emoji della competizione
+  const getCompetizioneEmoji = (competizioni) => {
+    if (!competizioni || !Array.isArray(competizioni)) return '';
+    
+    const emojiMap = {
+      'campionato': '🏆',
+      'champions': '⭐',
+      'coppecoppe': '🏅'
+    };
+    
+    return competizioni.map(comp => emojiMap[comp] || '').join(' ');
+  };
+
+  // Funzione per gestire il cambio competizione
+  const handleCompetizioneChange = (giocatoreId, selectedOptions) => {
+    const competizioni = Array.from(selectedOptions, option => option.value);
+    handleEdit(giocatoreId, 'competizione', competizioni);
   };
 
   const handleUpdateCrediti = async () => {
@@ -264,6 +303,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
           golSubiti: Number(updatedGiocatore.golSubiti) || 0,
           voto: Number(updatedGiocatore.voto) || 0,
           currentFilter: updatedGiocatore.currentFilter || null,
+          competizione: Array.isArray(updatedGiocatore.competizione) ? updatedGiocatore.competizione : (updatedGiocatore.competizione ? [updatedGiocatore.competizione] : ['campionato']),
           squadra: selectedSquadra.nome
         };
         const giocatoreSquadraRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
@@ -307,18 +347,39 @@ const handleApplyFilter = (giocatoreId, filter) => {
     for (const squadra of squadre) {
       const squadraData = [
         ['Squadra:' + squadra.nome || 'N/A','Valore Rosa:' + squadra.valoreRosa || 'N/A','Crediti:' + squadra.crediti || 'N/A'],
-        ['Id','Nome', 'Posizione', 'Gol', 'Presenze', 'Scadenza', 'ValoreIniziale', 'ValoreAttuale', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
+        ['Id','Nome', 'Posizione', 'Competizione', 'Gol', 'Presenze', 'Scadenza', 'ValoreIniziale', 'ValoreAttuale', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
       ];
+      
+      // Dati Lista Giovani
+      const listaGiovaniData = [
+        ['Lista Giovani - ' + squadra.nome || 'N/A'],
+        ['Id','Nome', 'Posizione', 'Gol', 'Presenze', 'ValoreIniziale', 'ValoreAttuale', 'DataInserimento', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
+      ];
+      
       try {
         const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
         const giocatoriSnap = await getDocs(giocatoriRef);
         const giocatori = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        giocatori.sort(sortGiocatoriByRuolo);
-        giocatori.forEach(giocatore => {
+        
+        // Recupera lista giovani
+        const listaGiovaniRef = collection(db, `Squadre/${squadra.id}/listaGiovani`);
+        const listaGiovaniSnap = await getDocs(listaGiovaniRef);
+        const listaGiovani = listaGiovaniSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Filtra giocatori principali (escludi quelli in lista giovani)
+        const giocatoriPrincipali = giocatori.filter(g => !listaGiovani.find(lg => lg.id === g.id));
+        
+        giocatoriPrincipali.sort(sortGiocatoriByRuolo);
+        giocatoriPrincipali.forEach(giocatore => {
+          const competizioniString = Array.isArray(giocatore.competizione) 
+            ? giocatore.competizione.join(', ') 
+            : (giocatore.competizione || 'campionato');
+            
           squadraData.push([
             giocatore.id || 'N/A',
             giocatore.nome || 'N/A',
             giocatore.posizione || 'N/A',
+            competizioniString,
             giocatore.gol || 0,
             giocatore.presenze || 0,
             giocatore.scadenza || 'N/A',
@@ -334,8 +395,41 @@ const handleApplyFilter = (giocatoreId, filter) => {
             squadra.id || 'N/A'
           ]);
         });
+        
+        // Aggiungi lista giovani se presente
+        if (listaGiovani.length > 0) {
+          listaGiovani.sort(sortGiocatoriByRuolo);
+          listaGiovani.forEach(giocatore => {
+            listaGiovaniData.push([
+              giocatore.id || 'N/A',
+              giocatore.nome || 'N/A',
+              giocatore.posizione || 'N/A',
+              giocatore.gol || 0,
+              giocatore.presenze || 0,
+              giocatore.valoreIniziale || 0,
+              giocatore.valoreAttuale || 0,
+              giocatore.dataInserimentoGiovani || 'N/A',
+              giocatore.assist || 0,
+              giocatore.ammonizioni || 0,
+              giocatore.espulsioni || 0,
+              giocatore.autogol || 0,
+              giocatore.voto || 0,
+              giocatore.golSubiti || 0,
+              giocatore.rigoriParati || 0,
+              squadra.id || 'N/A'
+            ]);
+          });
+        }
+        
         const worksheet = XLSX.utils.aoa_to_sheet(squadraData);
         XLSX.utils.book_append_sheet(workbook, worksheet, squadra.nome || `Squadra ${squadra.id}`);
+        
+        // Aggiungi foglio lista giovani se ci sono giocatori
+        if (listaGiovani.length > 0) {
+          const worksheetGiovani = XLSX.utils.aoa_to_sheet(listaGiovaniData);
+          XLSX.utils.book_append_sheet(workbook, worksheetGiovani, `${squadra.nome}_Giovani` || `Squadra_${squadra.id}_Giovani`);
+        }
+        
       } catch (error) {
         console.error(`Errore nel recupero dei giocatori per la squadra ${squadra.id}:`, error);
         const errorWorksheet = XLSX.utils.aoa_to_sheet([['Errore nel recupero dei dati per questa squadra']]);
@@ -407,6 +501,98 @@ const handleApplyFilter = (giocatoreId, filter) => {
     }
   };
 
+  const handleAggiungiGiovane = async () => {
+    if (!giocatoriSelezionatiGiovani.length || !selectedSquadra) {
+      alert("Seleziona almeno un giocatore da aggiungere alla lista giovani");
+      return;
+    }
+
+    try {
+      let aggiunti = 0;
+      let giaSalvati = 0;
+
+      for (const giocatoreId of giocatoriSelezionatiGiovani) {
+        const giocatore = giocatori.find(g => g.id === giocatoreId);
+        if (!giocatore) {
+          console.warn(`Giocatore con ID ${giocatoreId} non trovato`);
+          continue;
+        }
+
+        // Verifica se il giocatore è già nella lista giovani
+        const giocatoreGiaPresente = listaGiovani.find(g => g.id === giocatoreId);
+        if (giocatoreGiaPresente) {
+          giaSalvati++;
+          continue;
+        }
+
+        // Aggiungi alla sottocollection listaGiovani
+        const listaGiovaniRef = doc(db, `Squadre/${selectedSquadra.id}/listaGiovani`, giocatoreId);
+        await setDoc(listaGiovaniRef, {
+          ...giocatore,
+          isGiovane: true,
+          dataInserimentoGiovani: new Date().toISOString().split('T')[0]
+        });
+
+        // Aggiorna lo stato locale
+        setListaGiovani(prev => [...prev, {
+          ...giocatore,
+          isGiovane: true,
+          dataInserimentoGiovani: new Date().toISOString().split('T')[0]
+        }]);
+
+        aggiunti++;
+      }
+
+      setGiocatoriSelezionatiGiovani([]);
+      
+      let messaggio = "";
+      if (aggiunti > 0) {
+        messaggio += `${aggiunti} giocatore${aggiunti > 1 ? 'i' : ''} aggiunt${aggiunti > 1 ? 'i' : 'o'} alla lista giovani con successo!`;
+      }
+      if (giaSalvati > 0) {
+        if (messaggio) messaggio += " ";
+        messaggio += `${giaSalvati} giocatore${giaSalvati > 1 ? 'i' : ''} era${giaSalvati > 1 ? 'no' : ''} già present${giaSalvati > 1 ? 'i' : 'e'} nella lista.`;
+      }
+      
+      alert(messaggio || "Nessun giocatore è stato aggiunto.");
+
+    } catch (err) {
+      console.error("Errore nell'aggiunta dei giocatori alla lista giovani:", err);
+      alert(`Errore nell'aggiunta dei giocatori alla lista giovani: ${err.message}`);
+    }
+  };
+
+  const handleRimuoviGiovane = async (giocatoreId) => {
+    if (!selectedSquadra) {
+      alert("Nessuna squadra selezionata");
+      return;
+    }
+
+    const confirmDelete = window.confirm("Sei sicuro di voler rimuovere questo giocatore dalla lista giovani?");
+    if (confirmDelete) {
+      try {
+        const listaGiovaniRef = doc(db, `Squadre/${selectedSquadra.id}/listaGiovani`, giocatoreId);
+        await deleteDoc(listaGiovaniRef);
+
+        setListaGiovani(prev => prev.filter(giocatore => giocatore.id !== giocatoreId));
+        alert("Giocatore rimosso dalla lista giovani con successo!");
+      } catch (err) {
+        console.error("Errore nella rimozione del giocatore dalla lista giovani:", err);
+        alert(`Errore nella rimozione del giocatore dalla lista giovani: ${err.message}`);
+      }
+    }
+  };
+
+  // Filtra i giocatori principali escludendo quelli in lista giovani
+  const giocatoriPrincipali = giocatori.filter(g => 
+    !listaGiovani.find(lg => lg.id === g.id)
+  );
+
+  // Filtra i giocatori che non sono già nella lista giovani
+  const giocatoriDisponibiliPerGiovani = giocatoriPrincipali.filter(g => 
+    !listaGiovani.find(lg => lg.id === g.id)
+  );
+
   return (
     <div className="container-fluid p-3">
       <h2 className="my-4 text-center">Lista Squadre</h2>
@@ -451,7 +637,10 @@ const handleApplyFilter = (giocatoreId, filter) => {
             </button>
           </p>
           <p>
-            Numero Giocatori: {giocatori.length || 'N/A'}
+            Numero Giocatori: {giocatoriPrincipali.length || 'N/A'}
+          </p>
+          <p>
+            Numero Giovani: {listaGiovani.length || 'N/A'}
           </p>
           <h3>Giocatori di {selectedSquadra.nome || selectedSquadra.id}</h3>
           {isAdmin && (
@@ -468,6 +657,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
               <tr>
                 <th>Nome</th>
                 <th>Posizione</th>
+                <th>Competizione</th>
                 <th>Gol</th>
                 <th>Presenze</th>
                 <th>Valore Iniziale</th>
@@ -483,7 +673,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
               </tr>
             </thead>
             <tbody>
-              {giocatori.sort(sortGiocatoriByRuolo).map((giocatore) => (
+              {giocatoriPrincipali.sort(sortGiocatoriByRuolo).map((giocatore) => (
                 <tr 
                   key={giocatore.id} 
                   style={{ 
@@ -493,6 +683,26 @@ const handleApplyFilter = (giocatoreId, filter) => {
                 >
                   <td>{giocatore.nome}</td>
                   <td>{giocatore.posizione}</td>
+                  <td>
+                    {isAdmin ? (
+                      <select
+                        multiple
+                        value={Array.isArray(giocatore.competizione) ? giocatore.competizione : (giocatore.competizione ? [giocatore.competizione] : ['campionato'])}
+                        onChange={(e) => handleCompetizioneChange(giocatore.id, e.target.selectedOptions)}
+                        className="form-select form-select-sm"
+                        style={{ height: '80px' }}
+                        size="3"
+                      >
+                        <option value="campionato">🏆 Campionato</option>
+                        <option value="champions">⭐ Champions</option>
+                        <option value="coppecoppe">🏅 Coppe delle Coppe</option>
+                      </select>
+                    ) : (
+                      <span style={{ fontSize: '1.2rem' }}>
+                        {getCompetizioneEmoji(Array.isArray(giocatore.competizione) ? giocatore.competizione : (giocatore.competizione ? [giocatore.competizione] : ['campionato']))}
+                      </span>
+                    )}
+                  </td>
                   <td>{giocatore.gol}</td>
                   <td>{giocatore.presenze}</td>
                   <td>
@@ -593,6 +803,101 @@ const handleApplyFilter = (giocatoreId, filter) => {
               ))}
             </tbody>
           </table>
+
+          {/* Sezione Lista Giovani */}
+          <div className="mt-5">
+            <h3>Lista Giovani - {selectedSquadra.nome || selectedSquadra.id}</h3>
+            
+            {isAdmin && (
+              <div className="mb-3">
+                <div className="row">
+                  <div className="col-md-8">
+                    <select
+                      className="form-select"
+                      multiple
+                      value={giocatoriSelezionatiGiovani}
+                      onChange={(e) => setGiocatoriSelezionatiGiovani(Array.from(e.target.selectedOptions, option => option.value))}
+                      style={{ height: '150px' }}
+                    >
+                      {giocatoriDisponibiliPerGiovani.map(giocatore => (
+                        <option key={giocatore.id} value={giocatore.id}>
+                          {giocatore.nome} - {giocatore.posizione}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <button
+                      className="btn btn-success"
+                      onClick={handleAggiungiGiovane}
+                      disabled={giocatoriSelezionatiGiovani.length === 0}
+                    >
+                      Aggiungi alla Lista Giovani
+                      {giocatoriSelezionatiGiovani.length > 0 && (
+                        <span className="badge bg-light text-dark ms-2">
+                          {giocatoriSelezionatiGiovani.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {listaGiovani.length > 0 ? (
+              <table className="table table-striped table-bordered table-hover">
+                <thead className="table-warning">
+                  <tr>
+                    <th>Nome</th>
+                    <th>Posizione</th>
+                    <th>Gol</th>
+                    <th>Presenze</th>
+                    <th>Valore Iniziale</th>
+                    <th>Valore Attuale</th>
+                    <th>Data Inserimento</th>
+                    <th>Ammonizioni</th>
+                    <th>Assist</th>
+                    <th>Autogol</th>
+                    <th>Espulsioni</th>
+                    <th>Gol Subiti</th>
+                    <th>Media Voto</th>
+                    {isAdmin && <th>Azioni</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaGiovani.sort(sortGiocatoriByRuolo).map((giocatore) => (
+                    <tr key={giocatore.id}>
+                      <td>{giocatore.nome}</td>
+                      <td>{giocatore.posizione}</td>
+                      <td>{giocatore.gol}</td>
+                      <td>{giocatore.presenze}</td>
+                      <td>{giocatore.valoreIniziale}</td>
+                      <td>{giocatore.valoreAttuale}</td>
+                      <td>{giocatore.dataInserimentoGiovani || 'N/A'}</td>
+                      <td>{giocatore.ammonizioni}</td>
+                      <td>{giocatore.assist}</td>
+                      <td>{giocatore.autogol}</td>
+                      <td>{giocatore.espulsioni}</td>
+                      <td>{giocatore.golSubiti}</td>
+                      <td>{giocatore.voto}</td>
+                      {isAdmin && (
+                        <td>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleRimuoviGiovane(giocatore.id)}
+                          >
+                            Rimuovi da Lista Giovani
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-muted">Nessun giocatore presente nella lista giovani.</p>
+            )}
+          </div>
         </div>
       )}
     </div>

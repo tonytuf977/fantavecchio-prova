@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/firebase';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { useGiocatori } from '../hook/useGiocatori';
 import { useSquadre } from '../hook/useSquadre';
 import { Modal, Button } from 'react-bootstrap';
@@ -22,15 +22,23 @@ function GestioneScambiAdmin() {
       const richieste = await Promise.all(querySnapshot.docs.map(async (doc) => {
         const richiesta = { id: doc.id, ...doc.data() };
 
-        // Recupera dettagli dei giocatori offerti e richiesti
-        const giocatoriOfferti = await getGiocatoriDetails(richiesta.giocatoriOfferti);
-        const giocatoriRichiesti = await getGiocatoriDetails(richiesta.giocatoriRichiesti);
-
-        return {
-          ...richiesta,
-          giocatoriOfferti: giocatoriOfferti,
-          giocatoriRichiesti: giocatoriRichiesti
-        };
+        if (richiesta.tipoScambio === 'crediti') {
+          // Gestione scambio a crediti
+          const giocatoreRichiesto = await getGiocatoreDetails(richiesta.giocatoreRichiesto);
+          return {
+            ...richiesta,
+            giocatoreRichiestoDettagli: giocatoreRichiesto
+          };
+        } else {
+          // Gestione scambio tradizionale a giocatori
+          const giocatoriOfferti = await getGiocatoriDetails(richiesta.giocatoriOfferti || []);
+          const giocatoriRichiesti = await getGiocatoriDetails(richiesta.giocatoriRichiesti || []);
+          return {
+            ...richiesta,
+            giocatoriOfferti: giocatoriOfferti,
+            giocatoriRichiesti: giocatoriRichiesti
+          };
+        }
       }));
 
       setRichiesteScambio(richieste);
@@ -40,7 +48,7 @@ function GestioneScambiAdmin() {
   }, [giocatori]);
 
   const getGiocatoriDetails = async (giocatoriIds) => {
-    if (!giocatori || giocatori.length === 0) {
+    if (!giocatori || giocatori.length === 0 || !Array.isArray(giocatoriIds)) {
       return [];
     }
     const details = [];
@@ -53,6 +61,13 @@ function GestioneScambiAdmin() {
     return details;
   };
 
+  const getGiocatoreDetails = async (giocatoreId) => {
+    if (!giocatori || giocatori.length === 0 || !giocatoreId) {
+      return null;
+    }
+    return giocatori.find(g => g.id === giocatoreId) || null;
+  };
+
   const handleApprova = async (richiesta) => {
     try {
       console.log('Inizio approvazione scambio:', richiesta);
@@ -62,7 +77,6 @@ function GestioneScambiAdmin() {
         accettataAdmin: true,
         stato: 'Approvata da admin'
       });
-
 
       // Recupero email degli utenti della squadra avversaria
       const utentiRef = collection(db, 'Utenti');
@@ -75,12 +89,23 @@ function GestioneScambiAdmin() {
       console.log('Email destinatari:', utentiAvversari.map(u => u.email));
 
       // Prepara il contenuto dell'email
-      const emailContent = `
-        Hai una nuova richiesta di scambio
+      let emailContent = `
+        Hai una nuova richiesta di scambio approvata dall'admin
 
         Dettagli dello scambio:
         Squadra richiedente: ${richiesta.squadraRichiedente}
+        Tipo scambio: ${richiesta.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'}
+      `;
 
+      if (richiesta.tipoScambio === 'crediti') {
+        emailContent += `
+        Giocatore richiesto: ${richiesta.giocatoreRichiestoDettagli?.nome || 'N/A'} (Valore: ${richiesta.giocatoreRichiestoDettagli?.valoreAttuale || 'N/A'}€)
+        Crediti offerti: ${richiesta.creditiOfferti}€
+        
+        IMPORTANTE: Se accetti questo scambio, il giocatore dovrà essere rinnovato dalla squadra che lo riceve.
+        `;
+      } else {
+        emailContent += `
         Giocatori offerti:
         ${(richiesta.giocatoriOfferti || []).map(giocatore => 
           `- ${giocatore.nome || 'Sconosciuto'} (Valore: ${giocatore.valoreAttuale || 'N/A'}€)`
@@ -90,7 +115,12 @@ function GestioneScambiAdmin() {
         ${(richiesta.giocatoriRichiesti || []).map(giocatore => 
           `- ${giocatore.nome || 'Sconosciuto'} (Valore: ${giocatore.valoreAttuale || 'N/A'}€)`
         ).join('\n    ')}
+        
+        IMPORTANTE: Se accetti questo scambio, tutti i giocatori dovranno essere rinnovati dalle rispettive nuove squadre.
+        `;
+      }
 
+      emailContent += `
         Clausola: ${richiesta.clausola || 'Nessuna'}
 
         Accedi alla piattaforma per accettare o rifiutare lo scambio.
@@ -102,6 +132,7 @@ function GestioneScambiAdmin() {
         to_email: primoUtente.email,
         to_name: primoUtente.nome || 'FantaVecchio App',
         from_name: "FantaVecchio Admin",
+        subject: `Richiesta ${richiesta.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'} Approvata`,
         message: emailContent,
         cc_email: altriUtenti.map(u => u.email).join(', ')
       };
@@ -150,19 +181,35 @@ function GestioneScambiAdmin() {
       {richiesteScambio.map(richiesta => (
         <div key={richiesta.id} className="card mb-3">
           <div className="card-body">
-            <h5 className="card-title">Richiesta di Scambio</h5>
+            <h5 className="card-title">
+              Richiesta di {richiesta.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'}
+            </h5>
             <p>Da: {richiesta.squadraRichiedente}</p>
             <p>A: {richiesta.squadraAvversaria}</p>
-            <p>Giocatori offerti: 
-              {(richiesta.giocatoriOfferti.length > 0) ? richiesta.giocatoriOfferti.map(g =>
-                <span key={g.id}> {g.nome || 'Nome non disponibile'} (Valore: {g.valoreAttuale || 'N/A'}€)</span>
-              ).reduce((prev, curr) => [prev, ', ', curr]) : 'Nessuno'}
-            </p>
-            <p>Giocatori richiesti: 
-              {(richiesta.giocatoriRichiesti.length > 0) ? richiesta.giocatoriRichiesti.map(g =>
-                <span key={g.id}> {g.nome || 'Nome non disponibile'} (Valore: {g.valoreAttuale || 'N/A'}€)</span>
-              ).reduce((prev, curr) => [prev, ', ', curr]) : 'Nessuno'}
-            </p>
+            
+            {richiesta.tipoScambio === 'crediti' ? (
+              <>
+                <p>Giocatore richiesto: {richiesta.giocatoreRichiestoDettagli?.nome || 'Nome non disponibile'} 
+                   (Valore: {richiesta.giocatoreRichiestoDettagli?.valoreAttuale || 'N/A'}€)</p>
+                <p>Crediti offerti: {richiesta.creditiOfferti}€</p>
+              </>
+            ) : (
+              <>
+                <p>Giocatori offerti: 
+                  {(richiesta.giocatoriOfferti && richiesta.giocatoriOfferti.length > 0) ? 
+                    richiesta.giocatoriOfferti.map(g =>
+                      <span key={g.id}> {g.nome || 'Nome non disponibile'} (Valore: {g.valoreAttuale || 'N/A'}€)</span>
+                    ).reduce((prev, curr) => [prev, ', ', curr]) : 'Nessuno'}
+                </p>
+                <p>Giocatori richiesti: 
+                  {(richiesta.giocatoriRichiesti && richiesta.giocatoriRichiesti.length > 0) ? 
+                    richiesta.giocatoriRichiesti.map(g =>
+                      <span key={g.id}> {g.nome || 'Nome non disponibile'} (Valore: {g.valoreAttuale || 'N/A'}€)</span>
+                    ).reduce((prev, curr) => [prev, ', ', curr]) : 'Nessuno'}
+                </p>
+              </>
+            )}
+            
             <p>Clausola: {richiesta.clausola || 'Nessuna'}</p>
             <button className="btn btn-success me-2" onClick={() => handleApprova(richiesta)}>Approva</button>
             <button className="btn btn-danger" onClick={() => handleRifiuta(richiesta.id)}>Rifiuta</button>
