@@ -3,8 +3,9 @@ import { useUtenti } from '../hook/useUtenti';
 import { useSquadre } from '../hook/useSquadre';
 import { useGiocatori } from '../hook/useGiocatori';
 import { auth, db } from '../firebase/firebase';
-import { collection, query, where, getDocs, updateDoc, doc, getDoc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
-import { Modal, Button } from 'react-bootstrap';
+import { collection, query, where, getDocs, updateDoc, doc, getDoc, setDoc, deleteDoc, orderBy, writeBatch } from 'firebase/firestore';
+import { updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { Modal, Button, Collapse, Form } from 'react-bootstrap';
 import { useRinnovi } from '../hook/useRinnovi';
 import RinnovoContratto from './RinnovoContratto';
 
@@ -21,6 +22,15 @@ function Profilo() {
   const { loading: rinnovoLoading, aggiornaStatoRinnovo } = useRinnovi();
   const [storicoScambi, setStoricoScambi] = useState([]);
   const [richiesteElaborate, setRichiesteElaborate] = useState(new Set());
+
+  // Stati per impostazioni utente
+  const [showImpostazioni, setShowImpostazioni] = useState(false);
+  const [nuovoNomeSquadra, setNuovoNomeSquadra] = useState('');
+  const [nuovaEmail, setNuovaEmail] = useState('');
+  const [vecchiaPassword, setVecchiaPassword] = useState('');
+  const [nuovaPassword, setNuovaPassword] = useState('');
+  const [confermaPassword, setConfermaPassword] = useState('');
+  const [loadingAggiornamento, setLoadingAggiornamento] = useState(false);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async user => {
@@ -376,6 +386,275 @@ function Profilo() {
     }
   };
 
+  useEffect(() => {
+    // Inizializza i valori delle impostazioni
+    if (squadraUtente) {
+      setNuovoNomeSquadra(squadraUtente.nome || '');
+    }
+    if (utenteCorrente) {
+      setNuovaEmail(utenteCorrente.email || '');
+    }
+  }, [utenti, squadre, loadingUtenti, loadingSquadre, squadraUtente, utenteCorrente]);
+
+  const aggiornaRiferimentiSquadra = async (vecchioNome, nuovoNome, squadraId) => {
+    try {
+      const batch = writeBatch(db);
+
+      // Aggiorna tutti i giocatori nella collezione principale
+      const giocatoriRef = collection(db, 'Giocatori');
+      const q = query(giocatoriRef, where('squadra', '==', squadraId));
+      const giocatoriSnap = await getDocs(q);
+      
+      giocatoriSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { 
+          squadraNome: nuovoNome,
+          squadra: nuovoNome  // Aggiorna anche questo campo con il nuovo nome
+        });
+      });
+
+      // Cerca anche per vecchio nome squadra nella collezione principale
+      const qVecchioNome = query(giocatoriRef, where('squadra', '==', vecchioNome));
+      const giocatoriVecchioNomeSnap = await getDocs(qVecchioNome);
+      
+      giocatoriVecchioNomeSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { 
+          squadraNome: nuovoNome,
+          squadra: nuovoNome  // Aggiorna il campo squadra con il nuovo nome
+        });
+      });
+
+      // Aggiorna tutti i giocatori nella sottocollection della squadra
+      const giocatoriSquadraRef = collection(db, `Squadre/${squadraId}/giocatori`);
+      const giocatoriSquadraSnap = await getDocs(giocatoriSquadraRef);
+      
+      giocatoriSquadraSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { 
+          squadraNome: nuovoNome,
+          squadra: nuovoNome  // Aggiorna anche qui il campo squadra
+        });
+      });
+
+      // Aggiorna la lista giovani
+      const listaGiovaniRef = collection(db, `Squadre/${squadraId}/listaGiovani`);
+      const listaGiovaniSnap = await getDocs(listaGiovaniRef);
+      
+      listaGiovaniSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { 
+          squadraNome: nuovoNome,
+          squadra: nuovoNome  // Aggiorna anche qui il campo squadra
+        });
+      });
+
+      // Aggiorna le richieste di scambio
+      const richiesteRef = collection(db, 'RichiesteScambio');
+      const qRichiedente = query(richiesteRef, where('squadraRichiedente', '==', squadraId));
+      const qAvversaria = query(richiesteRef, where('squadraAvversaria', '==', squadraId));
+      
+      const [richiedenteSnap, avversariaSnap] = await Promise.all([
+        getDocs(qRichiedente),
+        getDocs(qAvversaria)
+      ]);
+
+      richiedenteSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { squadraRichiedenteNome: nuovoNome });
+      });
+
+      avversariaSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { squadraAvversariaNome: nuovoNome });
+      });
+
+      // Aggiorna i rinnovi contratti
+      const rinnoviRef = collection(db, 'RinnoviContratti');
+      const qRinnovi = query(rinnoviRef, where('squadraId', '==', squadraId));
+      const rinnoviSnap = await getDocs(qRinnovi);
+      
+      rinnoviSnap.docs.forEach(doc => {
+        batch.update(doc.ref, { squadraNome: nuovoNome });
+      });
+
+      await batch.commit();
+      console.log('Tutti i riferimenti alla squadra sono stati aggiornati, incluso il campo squadra nella lista generale');
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento dei riferimenti della squadra:', error);
+      throw error;
+    }
+  };
+
+  const handleCambiaNomeSquadra = async () => {
+    if (!nuovoNomeSquadra.trim() || !squadraUtente) {
+      setModalMessage('Inserisci un nome valido per la squadra');
+      setShowModal(true);
+      return;
+    }
+
+    if (nuovoNomeSquadra === squadraUtente.nome) {
+      setModalMessage('Il nuovo nome è uguale a quello attuale');
+      setShowModal(true);
+      return;
+    }
+
+    setLoadingAggiornamento(true);
+    try {
+      const vecchioNome = squadraUtente.nome;
+      
+      // Aggiorna il nome della squadra
+      const squadraRef = doc(db, 'Squadre', squadraUtente.id);
+      await updateDoc(squadraRef, { nome: nuovoNomeSquadra });
+
+      // Aggiorna tutti i riferimenti nel database
+      await aggiornaRiferimentiSquadra(vecchioNome, nuovoNomeSquadra, squadraUtente.id);
+
+      // Aggiorna lo stato locale
+      setSquadraUtente(prev => ({ ...prev, nome: nuovoNomeSquadra }));
+
+      setModalMessage('Nome della squadra aggiornato con successo!');
+      setShowModal(true);
+    } catch (error) {
+      console.error('Errore nel cambio del nome della squadra:', error);
+      setModalMessage('Errore nel cambio del nome della squadra: ' + error.message);
+      setShowModal(true);
+    } finally {
+      setLoadingAggiornamento(false);
+    }
+  };
+
+  const aggiornaRiferimentiEmail = async (vecchiaEmail, nuovaEmail) => {
+    try {
+      const batch = writeBatch(db);
+
+      // Aggiorna le richieste di scambio e altri documenti che potrebbero contenere l'email
+      // Se necessario, aggiungi qui altri aggiornamenti per documenti che contengono l'email
+
+      await batch.commit();
+      console.log('Tutti i riferimenti email sono stati aggiornati');
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento dei riferimenti email:', error);
+      throw error;
+    }
+  };
+
+  const handleCambiaEmail = async () => {
+    if (!nuovaEmail.trim() || !utenteCorrente) {
+      setModalMessage('Inserisci una email valida');
+      setShowModal(true);
+      return;
+    }
+
+    if (nuovaEmail === utenteCorrente.email) {
+      setModalMessage('La nuova email è uguale a quella attuale');
+      setShowModal(true);
+      return;
+    }
+
+    if (!vecchiaPassword) {
+      setModalMessage('Inserisci la password attuale per confermare il cambio email');
+      setShowModal(true);
+      return;
+    }
+
+    setLoadingAggiornamento(true);
+    try {
+      const user = auth.currentUser;
+      const credential = EmailAuthProvider.credential(user.email, vecchiaPassword);
+      
+      // Riautentica l'utente
+      await reauthenticateWithCredential(user, credential);
+      
+      const vecchiaEmail = user.email;
+      
+      // Aggiorna l'email in Firebase Auth
+      await updateEmail(user, nuovaEmail);
+
+      // Aggiorna l'email nel documento utente
+      const utenteRef = doc(db, 'Utenti', utenteCorrente.id);
+      await updateDoc(utenteRef, { email: nuovaEmail });
+
+      // Aggiorna tutti i riferimenti nel database
+      await aggiornaRiferimentiEmail(vecchiaEmail, nuovaEmail);
+
+      // Aggiorna lo stato locale
+      setUtenteCorrente(prev => ({ ...prev, email: nuovaEmail }));
+      setVecchiaPassword('');
+
+      setModalMessage('Email aggiornata con successo! Verifica la nuova email per confermare.');
+      setShowModal(true);
+    } catch (error) {
+      console.error('Errore nel cambio email:', error);
+      let messaggioErrore = 'Errore nel cambio email: ';
+      
+      if (error.code === 'auth/wrong-password') {
+        messaggioErrore += 'Password attuale non corretta';
+      } else if (error.code === 'auth/email-already-in-use') {
+        messaggioErrore += 'Questa email è già in uso da un altro account';
+      } else if (error.code === 'auth/invalid-email') {
+        messaggioErrore += 'Email non valida';
+      } else {
+        messaggioErrore += error.message;
+      }
+      
+      setModalMessage(messaggioErrore);
+      setShowModal(true);
+    } finally {
+      setLoadingAggiornamento(false);
+    }
+  };
+
+  const handleCambiaPassword = async () => {
+    if (!vecchiaPassword || !nuovaPassword || !confermaPassword) {
+      setModalMessage('Compila tutti i campi per cambiare la password');
+      setShowModal(true);
+      return;
+    }
+
+    if (nuovaPassword !== confermaPassword) {
+      setModalMessage('La nuova password e la conferma non coincidono');
+      setShowModal(true);
+      return;
+    }
+
+    if (nuovaPassword.length < 6) {
+      setModalMessage('La nuova password deve essere di almeno 6 caratteri');
+      setShowModal(true);
+      return;
+    }
+
+    setLoadingAggiornamento(true);
+    try {
+      const user = auth.currentUser;
+      const credential = EmailAuthProvider.credential(user.email, vecchiaPassword);
+      
+      // Riautentica l'utente
+      await reauthenticateWithCredential(user, credential);
+      
+      // Aggiorna la password
+      await updatePassword(user, nuovaPassword);
+
+      // Pulisci i campi
+      setVecchiaPassword('');
+      setNuovaPassword('');
+      setConfermaPassword('');
+
+      setModalMessage('Password aggiornata con successo!');
+      setShowModal(true);
+    } catch (error) {
+      console.error('Errore nel cambio password:', error);
+      let messaggioErrore = 'Errore nel cambio password: ';
+      
+      if (error.code === 'auth/wrong-password') {
+        messaggioErrore += 'Password attuale non corretta';
+      } else if (error.code === 'auth/weak-password') {
+        messaggioErrore += 'La nuova password è troppo debole';
+      } else {
+        messaggioErrore += error.message;
+      }
+      
+      setModalMessage(messaggioErrore);
+      setShowModal(true);
+    } finally {
+      setLoadingAggiornamento(false);
+    }
+  };
+
   if (loadingUtenti || loadingSquadre || loadingGiocatori) {
     return <div>Caricamento...</div>;
   }
@@ -386,8 +665,149 @@ function Profilo() {
   return (
     <div className="container mt-5">
       <h2>Profilo Utente</h2>
-      <p><strong>Email:</strong> {utenteCorrente.email}</p>
-      <p><strong>Ruolo:</strong> {utenteCorrente.ruolo}</p>
+      
+      {/* Sezione Impostazioni */}
+      <div className="mb-4">
+        <Button
+          variant="outline-secondary"
+          onClick={() => setShowImpostazioni(!showImpostazioni)}
+          className="mb-3"
+        >
+          ⚙️ Impostazioni Account
+        </Button>
+        
+        <Collapse in={showImpostazioni}>
+          <div className="card p-4">
+            <h4>Impostazioni Account</h4>
+            
+            {/* Cambio Nome Squadra */}
+            {squadraUtente && (
+              <div className="mb-4">
+                <h5>Cambia Nome Squadra</h5>
+                <div className="row">
+                  <div className="col-md-8">
+                    <Form.Group className="mb-3">
+                      <Form.Label>Nome Attuale: <strong>{squadraUtente.nome}</strong></Form.Label>
+                      <Form.Control
+                        type="text"
+                        placeholder="Nuovo nome squadra"
+                        value={nuovoNomeSquadra}
+                        onChange={(e) => setNuovoNomeSquadra(e.target.value)}
+                        disabled={loadingAggiornamento}
+                      />
+                    </Form.Group>
+                  </div>
+                  <div className="col-md-4">
+                    <Button
+                      variant="primary"
+                      onClick={handleCambiaNomeSquadra}
+                      disabled={loadingAggiornamento || !nuovoNomeSquadra.trim()}
+                      className="mt-4"
+                    >
+                      {loadingAggiornamento ? 'Aggiornando...' : 'Aggiorna Nome'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <hr />
+
+            {/* Cambio Email */}
+            <div className="mb-4">
+              <h5>Cambia Email</h5>
+              <div className="row">
+                <div className="col-md-6">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Email Attuale: <strong>{utenteCorrente?.email}</strong></Form.Label>
+                    <Form.Control
+                      type="email"
+                      placeholder="Nuova email"
+                      value={nuovaEmail}
+                      onChange={(e) => setNuovaEmail(e.target.value)}
+                      disabled={loadingAggiornamento}
+                    />
+                  </Form.Group>
+                </div>
+                <div className="col-md-6">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Password Attuale (per conferma)</Form.Label>
+                    <Form.Control
+                      type="password"
+                      placeholder="Password attuale"
+                      value={vecchiaPassword}
+                      onChange={(e) => setVecchiaPassword(e.target.value)}
+                      disabled={loadingAggiornamento}
+                    />
+                  </Form.Group>
+                </div>
+              </div>
+              <Button
+                variant="warning"
+                onClick={handleCambiaEmail}
+                disabled={loadingAggiornamento || !nuovaEmail.trim() || !vecchiaPassword}
+              >
+                {loadingAggiornamento ? 'Aggiornando...' : 'Aggiorna Email'}
+              </Button>
+            </div>
+
+            <hr />
+
+            {/* Cambio Password */}
+            <div className="mb-4">
+              <h5>Cambia Password</h5>
+              <div className="row">
+                <div className="col-md-4">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Password Attuale</Form.Label>
+                    <Form.Control
+                      type="password"
+                      placeholder="Password attuale"
+                      value={vecchiaPassword}
+                      onChange={(e) => setVecchiaPassword(e.target.value)}
+                      disabled={loadingAggiornamento}
+                    />
+                  </Form.Group>
+                </div>
+                <div className="col-md-4">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Nuova Password</Form.Label>
+                    <Form.Control
+                      type="password"
+                      placeholder="Nuova password (min 6 caratteri)"
+                      value={nuovaPassword}
+                      onChange={(e) => setNuovaPassword(e.target.value)}
+                      disabled={loadingAggiornamento}
+                    />
+                  </Form.Group>
+                </div>
+                <div className="col-md-4">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Conferma Nuova Password</Form.Label>
+                    <Form.Control
+                      type="password"
+                      placeholder="Conferma nuova password"
+                      value={confermaPassword}
+                      onChange={(e) => setConfermaPassword(e.target.value)}
+                      disabled={loadingAggiornamento}
+                    />
+                  </Form.Group>
+                </div>
+              </div>
+              <Button
+                variant="danger"
+                onClick={handleCambiaPassword}
+                disabled={loadingAggiornamento || !vecchiaPassword || !nuovaPassword || !confermaPassword}
+              >
+                {loadingAggiornamento ? 'Aggiornando...' : 'Aggiorna Password'}
+              </Button>
+            </div>
+          </div>
+        </Collapse>
+      </div>
+
+      <p><strong>Email:</strong> {utenteCorrente?.email}</p>
+      <p><strong>Ruolo:</strong> {utenteCorrente?.ruolo}</p>
       <p><strong>Notifiche:</strong> {notificheCount}</p>
       {squadraUtente && (
         <div>
