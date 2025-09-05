@@ -119,7 +119,7 @@ function HomePage() {
             </Link>
             <Link to="/accettaScambi" className="home-card admin-card" data-aos="zoom-in">
               <FaSync />
-              <h3>Accetta Scambi</h3>
+              <h3>Pannello Admin</h3>
               {scambiDaAccettareCount > 0 && (
                 <span className="notification-badge">{scambiDaAccettareCount}</span>
               )}
