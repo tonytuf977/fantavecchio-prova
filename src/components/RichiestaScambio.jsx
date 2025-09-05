@@ -244,7 +244,7 @@ Buona fortuna a tutti! 🍀
       console.log(`Invio email per ${statoText} finestra...`);
       await inviaEmailTuttiUtenti(soggetto, messaggio);
       
-      setModalMessage(`La finestra scambi è stata ${statoText}${automaticText} e tutti gli utenti sono stati notificati via email! 🎉`);
+      setModalMessage(`La finestra scambi è stata ${statoText}${automaticText} e tutti gli utenti sono stati notificati via email!`);
       setShowModal(true);
       
     } catch (error) {
