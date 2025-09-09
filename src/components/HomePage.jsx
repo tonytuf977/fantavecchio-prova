@@ -124,6 +124,10 @@ function HomePage() {
                 <span className="notification-badge">{scambiDaAccettareCount}</span>
               )}
             </Link>
+            <Link to="/import-rose-excel" className="home-card admin-card" data-aos="zoom-in-left">
+              <FaFileExcel />
+              <h3>Import Rose Excel di Leghe</h3>
+            </Link>
           </>
         )}
         <a href={regolamentoPDF} className="home-card" download data-aos="fade-up">

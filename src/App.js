@@ -23,6 +23,7 @@ import EmailNotification from './components/EmailNotification';
 import ValutazioneScambio from './components/ValutazioneScambio';
 import DownloadBackup from './components/DownloadBackup';
 import Dado from './components/dado';
+import ImportRoseExcel from './components/ImportRoseExcel';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -96,6 +97,7 @@ function App() {
           <Route path="/storicoScambi" element={<StoricoScambi />} />
           <Route path="/valutazioneScambio" element={<ValutazioneScambio />} />
           <Route path="/download-backup" element={<DownloadBackup />} />
+          <Route path="/import-rose-excel" element={<ImportRoseExcel />} />
         </Routes>
       </NotificheProvider>
     </Router>

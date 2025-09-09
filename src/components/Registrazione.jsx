@@ -8,6 +8,7 @@ function Registrazione() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  
   const navigate = useNavigate();
   const { addUtente } = useUtenti();
 
@@ -34,6 +35,7 @@ function Registrazione() {
     <div className="container mt-5">
       <h2>Registrazione</h2>
       {error && <div className="alert alert-danger">{error}</div>}
+      
       <form onSubmit={handleSubmit}>
         <div className="mb-3">
           <label htmlFor="email" className="form-label">Email</label>

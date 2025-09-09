@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { auth } from '../firebase/firebase';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { useUtenti } from '../hook/useUtenti';
 import { useNavigate } from 'react-router-dom';
+import { Modal, Button } from 'react-bootstrap';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  
+  // Stati per reset password
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  
   const navigate = useNavigate();
   const { utenti } = useUtenti();
 
@@ -74,10 +82,45 @@ function Login() {
     }
   };
 
+  // Funzione per gestire il reset della password
+  const handleResetPassword = async () => {
+    if (!resetEmail.trim()) {
+      setError('Inserisci un indirizzo email valido');
+      return;
+    }
+
+    setResetLoading(true);
+    setError('');
+    
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      setSuccess('Email di reset password inviata! Controlla la tua casella di posta.');
+      setShowResetModal(false);
+      setResetEmail('');
+    } catch (error) {
+      console.error('Errore nel reset password:', error);
+      let errorMessage = 'Errore nell\'invio dell\'email di reset: ';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage += 'Nessun utente trovato con questo indirizzo email.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage += 'Indirizzo email non valido.';
+      } else {
+        errorMessage += error.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div className="container mt-5">
       <h2>Login</h2>
       {error && <div className="alert alert-danger">{error}</div>}
+      {success && <div className="alert alert-success">{success}</div>}
+      
       <form onSubmit={handleSubmit}>
         <div className="mb-3">
           <label htmlFor="email" className="form-label">Email</label>
@@ -103,6 +146,59 @@ function Login() {
         </div>
         <button type="submit" className="btn btn-primary">Accedi</button>
       </form>
+      
+      {/* Pulsante "Ho dimenticato la password" */}
+      <div className="mt-3">
+        <button 
+          type="button" 
+          className="btn btn-link text-decoration-none" 
+          onClick={() => setShowResetModal(true)}
+        >
+          📧 Ho dimenticato la password
+        </button>
+      </div>
+
+      {/* Modal per reset password */}
+      <Modal show={showResetModal} onHide={() => setShowResetModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Reset Password</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Inserisci il tuo indirizzo email per ricevere un link di reset password.</p>
+          <div className="mb-3">
+            <label htmlFor="resetEmail" className="form-label">Email</label>
+            <input
+              type="email"
+              className="form-control"
+              id="resetEmail"
+              value={resetEmail}
+              onChange={(e) => setResetEmail(e.target.value)}
+              placeholder="Inserisci la tua email"
+              disabled={resetLoading}
+            />
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              setShowResetModal(false);
+              setResetEmail('');
+              setError('');
+            }}
+            disabled={resetLoading}
+          >
+            Annulla
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleResetPassword}
+            disabled={resetLoading || !resetEmail.trim()}
+          >
+            {resetLoading ? 'Invio in corso...' : 'Invia Email Reset'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase/firebase';
-import { collection, getDocs, doc, setDoc, writeBatch,getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, writeBatch } from 'firebase/firestore';
 import './ImportExel.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -123,74 +123,99 @@ function ImportExcel() {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
 
-        const giocatori = [];
-
-        for (const sheetName of workbook.SheetNames) {
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-          if (jsonData.length > 1) {
-            for (let i = 2; i < jsonData.length; i++) {
-              const row = jsonData[i];
-              const id = row[0]; // ID univoco dalla colonna A
-              const nome = row[3]; // Nome dalla colonna D (row[3])
-              
-              if (!id) {
-                console.warn(`Riga ${i + 1} saltata: ID giocatore mancante (colonna A)`);
-                continue;
-              }
-
-              const giocatore = {
-                id: id.toString(), // ✅ ID UNIVOCO dalla colonna A
-                nome: nome || 'Nome non disponibile', // Nome dalla colonna D
-                posizione: row[2] || 'N/A',
-                squadraSerieA: row[4] || null,
-                gol: Number(row[8]) || 0,
-                presenze: Number(row[5]) || 0,
-                assist: Number(row[14]) || 0,
-                ammonizioni: Number(row[15]) || 0,
-                espulsioni: Number(row[16]) || 0,
-                autogol: Number(row[17]) || 0,
-                voto: Number(row[6]) || 0,
-                rigoriParati: Number(row[10]) || 0,
-                golSubiti: Number(row[9]) || 0,
-                valoreIniziale: Number(row[18]) || 0,
-              };
-
-              console.log(`✅ Giocatore processato: ID=${giocatore.id}, Nome=${giocatore.nome}`);
-              giocatori.push(giocatore);
-            }
-          } else {
-            console.warn(`Foglio "${sheetName}" vuoto o non valido. Saltato.`);
-          }
+        // ✅ IMPORTA SOLO IL PRIMO FOGLIO
+        const firstSheetName = workbook.SheetNames[0];
+        console.log(`📊 Importando solo il primo foglio: "${firstSheetName}"`);
+        
+        if (!firstSheetName) {
+          throw new Error('Nessun foglio trovato nel file Excel');
         }
 
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+        if (jsonData.length <= 2) {
+          throw new Error('Il foglio Excel non contiene dati sufficienti (minimo 3 righe)');
+        }
+
+        const giocatori = [];
+
+        // Processa le righe del primo foglio
+        for (let i = 2; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          const id = row[0]; // ID univoco dalla colonna A
+          const nome = row[3]; // Nome dalla colonna D (row[3])
+          
+          if (!id) {
+            console.warn(`Riga ${i + 1} saltata: ID giocatore mancante (colonna A)`);
+            continue;
+          }
+
+          const giocatore = {
+            id: id.toString(), // ✅ ID UNIVOCO dalla colonna A
+            nome: nome || 'Nome non disponibile', // Nome dalla colonna D
+            posizione: row[2] || 'N/A',
+            squadraSerieA: row[4] || null,
+            gol: Number(row[8]) || 0,
+            presenze: Number(row[5]) || 0,
+            assist: Number(row[14]) || 0,
+            ammonizioni: Number(row[15]) || 0,
+            espulsioni: Number(row[16]) || 0,
+            autogol: Number(row[17]) || 0,
+            voto: Number(row[6]) || 0,
+            rigoriParati: Number(row[10]) || 0,
+            golSubiti: Number(row[9]) || 0,
+            valoreIniziale: Number(row[18]) || 0,
+          };
+
+          console.log(`✅ Giocatore processato: ID=${giocatore.id}, Nome=${giocatore.nome}`);
+          giocatori.push(giocatore);
+        }
+
+        console.log(`📊 Totale giocatori da processare: ${giocatori.length}`);
+
+        // ✅ OTTIMIZZAZIONE: Carica tutte le squadre e giocatori esistenti UNA SOLA VOLTA
+        console.log('🔍 Caricamento dati esistenti dal database...');
+        const [squadreSnapshot, giocatoriSnapshot] = await Promise.all([
+          getDocs(collection(db, 'Squadre')),
+          getDocs(collection(db, 'Giocatori'))
+        ]);
+
+        const squadre = squadreSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const giocatoriEsistenti = new Map();
+        
+        giocatoriSnapshot.docs.forEach(doc => {
+          giocatoriEsistenti.set(doc.id, doc.data());
+        });
+
+        console.log(`📊 Trovate ${squadre.length} squadre e ${giocatoriEsistenti.size} giocatori esistenti`);
+
+        // ✅ BATCH OTTIMIZZATO: Processa tutti i giocatori con batch più grandi
         const totalGiocatori = giocatori.length;
-        const batchSize = 20;
+        const batchSize = 400; // ✅ Batch più grande per ridurre le richieste
         const totalBatches = Math.ceil(totalGiocatori / batchSize);
 
-        const squadreSnapshot = await getDocs(collection(db, 'Squadre'));
-        const squadre = squadreSnapshot.docs.map(doc => doc.id);
+        console.log(`🚀 Processando ${totalGiocatori} giocatori in ${totalBatches} batch di massimo ${batchSize} elementi`);
 
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
           const batch = writeBatch(db);
           const start = batchIndex * batchSize;
           const end = Math.min((batchIndex + 1) * batchSize, totalGiocatori);
 
+          console.log(`📦 Batch ${batchIndex + 1}/${totalBatches}: processando giocatori ${start + 1}-${end}`);
+
           for (let i = start; i < end; i++) {
             const giocatore = giocatori[i];
 
-            // ✅ USA L'ID COME CHIAVE UNIVOCA per identificare il giocatore
-            const giocatoreRef = doc(db, 'Giocatori', giocatore.id); // Usa l'ID invece del nome
-            const giocatoreDoc = await getDoc(giocatoreRef);
+            // ✅ USA I DATI GIÀ CARICATI invece di fare nuove query
+            const giocatoreEsistente = giocatoriEsistenti.get(giocatore.id);
 
             let valoreIniziale, valoreAttuale;
 
-            if (giocatoreDoc.exists()) {
+            if (giocatoreEsistente) {
               // ✅ GIOCATORE ESISTENTE: Aggiorna tutti i dati basandosi sull'ID
               console.log(`🔄 Aggiornamento giocatore esistente: ID=${giocatore.id}, Nome=${giocatore.nome}`);
               
-              const giocatoreEsistente = giocatoreDoc.data();
               valoreIniziale = giocatoreEsistente.valoreIniziale;
               valoreAttuale = giocatoreEsistente.valoreAttuale || valoreIniziale;
 
@@ -214,6 +239,13 @@ function ImportExcel() {
                 if (giocatore.assist > 0) valoreAttuale += Math.round(giocatore.assist * 0.5);
                 if (giocatore.ammonizioni > 0) valoreAttuale -= Math.round(giocatore.ammonizioni * 0.5);
                 valoreAttuale += Math.round(giocatore.presenze * 0.4);
+
+                // ✅ CONTROLLO VALORE MINIMO: Il valore attuale non può mai essere inferiore al valore iniziale
+                if (valoreAttuale < valoreIniziale) {
+                  console.log(`⚠️ Correzione valore per ${giocatore.nome} (ID: ${giocatore.id}): 
+                    Valore calcolato: ${valoreAttuale}€ → Corretto a valore iniziale: ${valoreIniziale}€`);
+                  valoreAttuale = valoreIniziale;
+                }
               }
             } else {
               // ✅ GIOCATORE NUOVO: Crea con tutti i dati dall'Excel
@@ -227,43 +259,52 @@ function ImportExcel() {
             giocatore.valoreAttuale = valoreAttuale;
 
             // ✅ Aggiorna il giocatore nella collezione generale usando l'ID come chiave
+            const giocatoreRef = doc(db, 'Giocatori', giocatore.id);
             batch.set(giocatoreRef, giocatore, { merge: true });
 
-            // ✅ Trova la squadra corretta per il giocatore usando l'ID
-            const squadraAttuale = squadre.find(squadraId =>
-              giocatore.squadraSerieA === squadraId ||
-              (giocatoreDoc.exists() && giocatoreDoc.data().squadra === squadraId)
+            // ✅ Trova la squadra corretta per il giocatore usando i dati già caricati
+            const squadraAttuale = squadre.find(squadra =>
+              giocatore.squadraSerieA === squadra.id ||
+              (giocatoreEsistente && giocatoreEsistente.squadra === squadra.id)
             );
+
             if (squadraAttuale) {
-              const giocatoreSquadraRef = doc(db, `Squadre/${squadraAttuale}/giocatori`, giocatore.id); // Usa l'ID
+              const giocatoreSquadraRef = doc(db, `Squadre/${squadraAttuale.id}/giocatori`, giocatore.id);
               batch.set(giocatoreSquadraRef, giocatore, { merge: true });
             }
           }
 
+          // ✅ COMMIT BATCH CON RETRY LOGIC
           try {
             await batch.commit();
+            console.log(`✅ Batch ${batchIndex + 1}/${totalBatches} completato con successo`);
           } catch (error) {
             if (error.code === 'resource-exhausted') {
-              console.warn('Quota exceeded, retrying after delay...');
+              console.warn(`⚠️ Quota exceeded per batch ${batchIndex + 1}, attendo 30 secondi...`);
               await delay(30000); // 30 secondi di attesa
               await batch.commit(); // Riprova dopo la pausa
+              console.log(`✅ Batch ${batchIndex + 1}/${totalBatches} completato dopo retry`);
             } else {
               throw error;
             }
           }
 
+          // ✅ Aggiorna progress
           const currentProgress = end;
           const percentage = Math.round((currentProgress / totalGiocatori) * 100);
           setProgress(currentProgress);
           setProgressPercentage(percentage);
 
-          await delay(1000); // Attesa di 1 secondo tra i batch
+          // ✅ Delay più breve tra i batch
+          if (batchIndex < totalBatches - 1) {
+            await delay(500); // 0.5 secondi tra i batch invece di 1 secondo
+          }
         }
 
-        setMessage('Importazione completata con successo!');
+        setMessage(`✅ Importazione completata con successo! Processati ${totalGiocatori} giocatori dal foglio "${firstSheetName}"`);
       } catch (error) {
-        console.error("Errore durante l'importazione:", error);
-        setMessage('Errore durante l\'importazione dei dati: ' + error.message);
+        console.error("❌ Errore durante l'importazione:", error);
+        setMessage('❌ Errore durante l\'importazione dei dati: ' + error.message);
       }
     };
     reader.readAsArrayBuffer(file);
