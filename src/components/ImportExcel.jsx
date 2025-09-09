@@ -132,16 +132,19 @@ function ImportExcel() {
           if (jsonData.length > 1) {
             for (let i = 2; i < jsonData.length; i++) {
               const row = jsonData[i];
-              const nome = row[3];
-              if (!nome) {
-                console.warn(`Riga ${i + 1} saltata: nome giocatore mancante`);
+              const id = row[0]; // ID univoco dalla colonna A
+              const nome = row[3]; // Nome dalla colonna D (row[3])
+              
+              if (!id) {
+                console.warn(`Riga ${i + 1} saltata: ID giocatore mancante (colonna A)`);
                 continue;
               }
 
               const giocatore = {
-                nome: nome,
-                posizione: row[2],
-                squadraSerieA: row[4],
+                id: id.toString(), // ✅ ID UNIVOCO dalla colonna A
+                nome: nome || 'Nome non disponibile', // Nome dalla colonna D
+                posizione: row[2] || 'N/A',
+                squadraSerieA: row[4] || null,
                 gol: Number(row[8]) || 0,
                 presenze: Number(row[5]) || 0,
                 assist: Number(row[14]) || 0,
@@ -154,6 +157,7 @@ function ImportExcel() {
                 valoreIniziale: Number(row[18]) || 0,
               };
 
+              console.log(`✅ Giocatore processato: ID=${giocatore.id}, Nome=${giocatore.nome}`);
               giocatori.push(giocatore);
             }
           } else {
@@ -176,12 +180,16 @@ function ImportExcel() {
           for (let i = start; i < end; i++) {
             const giocatore = giocatori[i];
 
-            const giocatoreRef = doc(db, 'Giocatori', giocatore.nome);
+            // ✅ USA L'ID COME CHIAVE UNIVOCA per identificare il giocatore
+            const giocatoreRef = doc(db, 'Giocatori', giocatore.id); // Usa l'ID invece del nome
             const giocatoreDoc = await getDoc(giocatoreRef);
 
             let valoreIniziale, valoreAttuale;
 
             if (giocatoreDoc.exists()) {
+              // ✅ GIOCATORE ESISTENTE: Aggiorna tutti i dati basandosi sull'ID
+              console.log(`🔄 Aggiornamento giocatore esistente: ID=${giocatore.id}, Nome=${giocatore.nome}`);
+              
               const giocatoreEsistente = giocatoreDoc.data();
               valoreIniziale = giocatoreEsistente.valoreIniziale;
               valoreAttuale = giocatoreEsistente.valoreAttuale || valoreIniziale;
@@ -208,27 +216,26 @@ function ImportExcel() {
                 valoreAttuale += Math.round(giocatore.presenze * 0.4);
               }
             } else {
+              // ✅ GIOCATORE NUOVO: Crea con tutti i dati dall'Excel
+              console.log(`🆕 Creazione nuovo giocatore: ID=${giocatore.id}, Nome=${giocatore.nome}`);
+              
               valoreIniziale = giocatore.valoreIniziale;
               valoreAttuale = valoreIniziale;
             }
 
-            if (valoreAttuale < valoreIniziale) {
-              valoreAttuale = valoreIniziale;
-            }
-
-            valoreAttuale = Math.ceil(valoreAttuale);
-
             giocatore.valoreIniziale = valoreIniziale;
             giocatore.valoreAttuale = valoreAttuale;
 
+            // ✅ Aggiorna il giocatore nella collezione generale usando l'ID come chiave
             batch.set(giocatoreRef, giocatore, { merge: true });
 
+            // ✅ Trova la squadra corretta per il giocatore usando l'ID
             const squadraAttuale = squadre.find(squadraId =>
               giocatore.squadraSerieA === squadraId ||
               (giocatoreDoc.exists() && giocatoreDoc.data().squadra === squadraId)
             );
             if (squadraAttuale) {
-              const giocatoreSquadraRef = doc(db, `Squadre/${squadraAttuale}/giocatori`, giocatore.nome);
+              const giocatoreSquadraRef = doc(db, `Squadre/${squadraAttuale}/giocatori`, giocatore.id); // Usa l'ID
               batch.set(giocatoreSquadraRef, giocatore, { merge: true });
             }
           }

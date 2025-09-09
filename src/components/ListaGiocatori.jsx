@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { db } from '../firebase/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import './ListaGiocatori.css';
+import { useGiocatori } from '../hook/useGiocatori';
+import { useSquadre } from '../hook/useSquadre'; // Aggiungiamo l'hook delle squadre
 
 function ListaGiocatori() {
-  const [giocatori, setGiocatori] = useState([]);
+  const { giocatori, loading: giocatoriLoading, error: giocatoriError } = useGiocatori();
+  const { squadre, isLoading: squadreLoading } = useSquadre(); // Carichiamo le squadre
   const [filteredGiocatori, setFilteredGiocatori] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -15,7 +18,6 @@ function ListaGiocatori() {
       try {
         const querySnapshot = await getDocs(collection(db, 'Giocatori'));
         const giocatoriList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGiocatori(giocatoriList);
         setFilteredGiocatori(giocatoriList);
       } catch (error) {
         console.error("Errore nel recupero dei giocatori: ", error);
@@ -43,7 +45,20 @@ function ListaGiocatori() {
     return new Date(dateString).toLocaleDateString('it-IT', options);
   };
 
-  if (isLoading) return <div>Caricamento giocatori...</div>;
+  // Funzione per ottenere il nome della squadra dall'ID
+  const getNomeSquadra = (squadraId) => {
+    if (!squadraId) return 'Svincolato';
+    const squadra = squadre.find(s => s.id === squadraId);
+    return squadra ? squadra.nome : squadraId; // Fallback all'ID se non trovato
+  };
+
+  if (giocatoriLoading || squadreLoading) {
+    return <div>Caricamento...</div>;
+  }
+
+  if (giocatoriError) {
+    return <div>Errore nel caricamento dei giocatori: {giocatoriError}</div>;
+  }
 
   return (
     <div style={{ width: '100%', padding: '0', margin: '0', overflowX: 'auto' }}>
@@ -94,8 +109,8 @@ function ListaGiocatori() {
                 <td style={tableCellStyle}>{giocatore.golSubiti || 0}</td>
                 <td style={tableCellStyle}>{giocatore.scadenza ? formatDate(giocatore.scadenza) : 'N/A'}</td>
                 <td style={tableCellStyle}>{giocatore.valoreIniziale || 0}</td>
-                <td style={tableCellStyle}>{giocatore.squadra || 'Svincolato *'}</td>
-                <td style={tableCellStyle}>{giocatore.squadraSerieA || 'Svincolato *'}</td>
+                <td style={tableCellStyle}>{getNomeSquadra(giocatore.squadra) || 'Svincolato *'}</td>
+                <td style={tableCellStyle}>{getNomeSquadra(giocatore.squadraSerieA) || 'Svincolato *'}</td>
               </tr>
             ))}
           </tbody>

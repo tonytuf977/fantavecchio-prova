@@ -58,44 +58,95 @@ function Profilo() {
   }, [richiesteScambio]);
 
   const fetchRichiesteScambio = async (squadraId) => {
-    const richiesteRef = collection(db, 'RichiesteScambio');
-    const q = query(
-      richiesteRef,
-      where('squadraAvversaria', '==', squadraId),
-      where('stato', '==', 'Approvata da admin'),
-      where('accettataAdmin', '==', true)
-    );
-    const querySnapshot = await getDocs(q);
-    const richieste = await Promise.all(querySnapshot.docs.map(async docSnapshot => {
-      const data = docSnapshot.data();
-      const squadraRichiedente = await getDoc(doc(db, 'Squadre', data.squadraRichiedente));
-      
-      if (data.tipoScambio === 'crediti') {
-        // Gestione scambio a crediti
-        const giocatoreRichiesto = await getDoc(doc(db, 'Giocatori', data.giocatoreRichiesto));
-        return {
+    try {
+      const richiesteRef = collection(db, 'RichiesteScambio');
+      const q = query(
+        richiesteRef,
+        where('squadraAvversaria', '==', squadraId),
+        where('stato', '==', 'Approvata da admin'),
+        where('accettataAdmin', '==', true)
+      );
+      const querySnapshot = await getDocs(q);
+      const richieste = await Promise.all(querySnapshot.docs.map(async docSnapshot => {
+        const data = docSnapshot.data();
+        
+        console.log('🔍 DEBUG - Dati richiesta dal database:', {
           id: docSnapshot.id,
-          ...data,
-          squadraRichiedenteNome: squadraRichiedente.data().nome,
-          giocatoreRichiestoDettagli: giocatoreRichiesto.exists() ? { id: giocatoreRichiesto.id, ...giocatoreRichiesto.data() } : null
-        };
-      } else {
-        // Gestione scambio tradizionale a giocatori
-        const giocatoriOfferti = await Promise.all((data.giocatoriOfferti || []).map(id => getDoc(doc(db, 'Giocatori', id))));
-        const giocatoriRichiesti = await Promise.all((data.giocatoriRichiesti || []).map(id => getDoc(doc(db, 'Giocatori', id))));
-        return {
-          id: docSnapshot.id,
-          ...data,
-          squadraRichiedenteNome: squadraRichiedente.data().nome,
-          giocatoriOfferti: giocatoriOfferti.map(g => ({ id: g.id, ...g.data() })),
-          giocatoriRichiesti: giocatoriRichiesti.map(g => ({ id: g.id, ...g.data() }))
-        };
-      }
-    }));
-    setRichiesteScambio(richieste);
-  };
+          tipoScambio: data.tipoScambio,
+          creditiOfferti: data.creditiOfferti,
+          dataCompleta: data
+        });
 
-  const fetchStoricoScambi = async (squadraId) => {
+        // Ottieni nome squadra richiedente
+        let squadraRichiedenteNome = data.squadraRichiedente;
+        try {
+          const squadraDoc = await getDoc(doc(db, 'Squadre', data.squadraRichiedente));
+          if (squadraDoc.exists()) {
+            squadraRichiedenteNome = squadraDoc.data().nome;
+          }
+        } catch (error) {
+          console.warn('Errore nel recupero nome squadra richiedente:', error);
+        }
+
+        if (data.tipoScambio === 'crediti') {
+          // Gestione scambio a crediti
+          if (!data.giocatoreRichiesto) {
+            console.warn('ID giocatore richiesto mancante per richiesta crediti:', docSnapshot.id);
+            return null;
+          }
+          
+          const giocatoreRichiestoDoc = await getDoc(doc(db, 'Giocatori', data.giocatoreRichiesto));
+          
+          return {
+            id: docSnapshot.id,
+            ...data,
+            squadraRichiedenteNome: squadraRichiedenteNome,
+            creditiOfferti: data.creditiOfferti || 0, // ✅ ASSICURA CHE I CREDITI CI SIANO
+            giocatoreRichiestoDettagli: giocatoreRichiestoDoc.exists() ? 
+              { id: giocatoreRichiestoDoc.id, ...giocatoreRichiestoDoc.data() } : 
+              { id: data.giocatoreRichiesto, nome: 'Giocatore non trovato', valoreAttuale: 0 }
+          };
+        } else {
+          // Gestione scambio giocatori (con o senza crediti)
+          const giocatoriOffertiPromises = (data.giocatoriOfferti || []).map(async id => {
+            if (!id) return null;
+            const doc_ref = await getDoc(doc(db, 'Giocatori', id));
+            return doc_ref.exists() ? { id: doc_ref.id, ...doc_ref.data() } : null;
+          });
+          
+          const giocatoriRichiestiPromises = (data.giocatoriRichiesti || []).map(async id => {
+            if (!id) return null;
+            const doc_ref = await getDoc(doc(db, 'Giocatori', id));
+            return doc_ref.exists() ? { id: doc_ref.id, ...doc_ref.data() } : null;
+          });
+          
+          const giocatoriOfferti = (await Promise.all(giocatoriOffertiPromises)).filter(g => g !== null);
+          const giocatoriRichiesti = (await Promise.all(giocatoriRichiestiPromises)).filter(g => g !== null);
+          
+          return {
+            id: docSnapshot.id,
+            ...data,
+            squadraRichiedenteNome: squadraRichiedenteNome,
+            creditiOfferti: data.creditiOfferti || 0, // ✅ ASSICURA CHE I CREDITI CI SIANO
+            giocatoriOfferti: giocatoriOfferti,
+            giocatoriRichiesti: giocatoriRichiesti
+          };
+        }
+      }));
+      
+      // Filtra le richieste null (quelle con errori)
+      const richiesteValide = richieste.filter(r => r !== null);
+      console.log('✅ Richieste caricate con crediti:', richiesteValide.map(r => ({
+        id: r.id,
+        tipo: r.tipoScambio,
+        crediti: r.creditiOfferti
+      })));
+      setRichiesteScambio(richiesteValide);
+    } catch (error) {
+      console.error('Errore nel caricamento delle richieste di scambio:', error);
+      setRichiesteScambio([]);
+    }
+  };  const fetchStoricoScambi = async (squadraId) => {
     try {
       const scambiRef = collection(db, 'RichiesteScambio');
       const scambiSnap = await getDocs(scambiRef);
@@ -182,7 +233,7 @@ function Profilo() {
     }
   };
 
-  const scambiaGiocatori = async (squadraRichiedenteId, squadraAvversariaId, giocatoriOfferti, giocatoriRichiesti) => {
+  const scambiaGiocatori = async (squadraRichiedenteId, squadraAvversariaId, giocatoriOfferti, giocatoriRichiesti, creditiOfferti = 0) => {
     if (giocatoriOfferti && Array.isArray(giocatoriOfferti)) {
       for (const giocatore of giocatoriOfferti) {
         await aggiornaSquadraGiocatore(giocatore.id, squadraRichiedenteId, squadraAvversariaId);
@@ -193,6 +244,32 @@ function Profilo() {
         await aggiornaSquadraGiocatore(giocatore.id, squadraAvversariaId, squadraRichiedenteId);
       }
     }
+    
+    // ✅ CORRETTO: Se ci sono crediti offerti (per tipo giocatori con crediti), trasferiscili
+    if (creditiOfferti > 0) {
+      console.log(`💰 Trasferimento crediti: ${creditiOfferti}€ da ${squadraRichiedenteId} a ${squadraAvversariaId}`);
+      
+      const squadraRichiedenteRef = doc(db, 'Squadre', squadraRichiedenteId);
+      const squadraAvversariaRef = doc(db, 'Squadre', squadraAvversariaId);
+      
+      const squadraRichiedenteSnap = await getDoc(squadraRichiedenteRef);
+      const squadraAvversariaSnap = await getDoc(squadraAvversariaRef);
+      
+      const creditiAttualiRichiedente = squadraRichiedenteSnap.data().crediti || 0;
+      const creditiAttualiAvversaria = squadraAvversariaSnap.data().crediti || 0;
+      
+      console.log(`💰 Crediti prima: Richiedente ${creditiAttualiRichiedente}€, Avversaria ${creditiAttualiAvversaria}€`);
+      
+      await updateDoc(squadraRichiedenteRef, { 
+        crediti: creditiAttualiRichiedente - creditiOfferti 
+      });
+      await updateDoc(squadraAvversariaRef, { 
+        crediti: creditiAttualiAvversaria + creditiOfferti 
+      });
+      
+      console.log(`💰 Crediti dopo: Richiedente ${creditiAttualiRichiedente - creditiOfferti}€, Avversaria ${creditiAttualiAvversaria + creditiOfferti}€`);
+    }
+    
     await aggiornaRosaSquadra(squadraRichiedenteId);
     await aggiornaRosaSquadra(squadraAvversariaId);
   };
@@ -244,7 +321,7 @@ function Profilo() {
 
   const handleAccettaScambio = async (richiesta) => {
     if (richiesteElaborate.has(richiesta.id)) {
-      console.warn("Richiesta già elaborata:", richiesta.id);
+      console.warn('Richiesta già in elaborazione:', richiesta.id);
       return;
     }
 
@@ -259,60 +336,50 @@ function Profilo() {
     };
 
     try {
-      // Aggiungi la richiesta al Set "in elaborazione"
       setRichiesteElaborate(prev => new Set(prev).add(richiesta.id));
 
-      // Verifica lo stato della richiesta nel database
-      const richiestaRef = doc(db, 'RichiesteScambio', richiesta.id);
-      const richiestaSnap = await getDoc(richiestaRef);
-
-      if (!richiestaSnap.exists()) {
-        console.warn("Richiesta di scambio non trovata:", richiesta.id);
-        alert("La richiesta di scambio non è più disponibile.");
-        return;
-      }
-
-      const datiRichiesta = richiestaSnap.data();
-      if (datiRichiesta.stato === 'Completato') {
-        console.warn("Lo scambio è già stato completato:", richiesta.id);
-        alert("Questo scambio è già stato completato.");
-        return;
-      }
-
-      // Procedi con l'accettazione dello scambio
-      await updateDoc(richiestaRef, {
-        stato: 'Completato',
-        accettataAvversario: true,
-        dataScambio: new Date().toISOString().split('T')[0]
+      // ✅ DEBUG: Logga sempre i crediti prima dell'elaborazione
+      console.log('🔄 INIZIO ELABORAZIONE SCAMBIO:', {
+        id: richiesta.id,
+        tipo: richiesta.tipoScambio,
+        creditiOfferti: richiesta.creditiOfferti,
+        creditiType: typeof richiesta.creditiOfferti
       });
 
       if (richiesta.tipoScambio === 'crediti') {
-        // Gestione scambio a crediti
-        await rimuoviScadenza([richiesta.giocatoreRichiestoDettagli]);
+        console.log('💰 ELABORAZIONE SCAMBIO CREDITI');
         await scambiaCrediti(
           richiesta.squadraRichiedente,
           richiesta.squadraAvversaria,
           richiesta.giocatoreRichiestoDettagli,
           richiesta.creditiOfferti
         );
-        
-        // Crea richiesta di rinnovo per la squadra che riceve il giocatore (squadra richiedente)
-        await creaRichiestaRinnovo(richiesta.squadraRichiedente, [richiesta.giocatoreRichiestoDettagli]);
+        await rimuoviScadenza([richiesta.giocatoreRichiestoDettagli]);
       } else {
-        // Gestione scambio tradizionale a giocatori
-        await rimuoviScadenza(richiesta.giocatoriOfferti);
-        await rimuoviScadenza(richiesta.giocatoriRichiesti);
+        console.log('👥 ELABORAZIONE SCAMBIO GIOCATORI CON CREDITI:', richiesta.creditiOfferti);
+        
+        // ✅ ASSICURATI CHE I CREDITI VENGANO PASSATI CORRETTAMENTE
+        const creditiDaTrasferire = richiesta.creditiOfferti || 0;
+        console.log('💰 Crediti che verranno trasferiti:', creditiDaTrasferire);
         
         await scambiaGiocatori(
           richiesta.squadraRichiedente,
           richiesta.squadraAvversaria,
           richiesta.giocatoriOfferti,
-          richiesta.giocatoriRichiesti
+          richiesta.giocatoriRichiesti,
+          creditiDaTrasferire // ✅ PASSA I CREDITI ESPLICITAMENTE
         );
-
-        await creaRichiestaRinnovo(richiesta.squadraRichiedente, richiesta.giocatoriRichiesti);
-        await creaRichiestaRinnovo(richiesta.squadraAvversaria, richiesta.giocatoriOfferti);
+        const tuttiGiocatori = [...(richiesta.giocatoriOfferti || []), ...(richiesta.giocatoriRichiesti || [])];
+        await rimuoviScadenza(tuttiGiocatori);
       }
+
+      // Procedi con l'accettazione dello scambio
+      const richiestaRef = doc(db, 'RichiesteScambio', richiesta.id);
+      await updateDoc(richiestaRef, {
+        stato: 'Completato',
+        accettataAvversario: true,
+        dataScambio: new Date().toISOString().split('T')[0]
+      });
 
       setModalMessage('Scambio accettato e completato! Controlla i giocatori da rinnovare.');
       setShowModal(true);
@@ -489,6 +556,18 @@ function Profilo() {
 
     if (nuovoNomeSquadra === squadraUtente.nome) {
       setModalMessage('Il nuovo nome è uguale a quello attuale');
+      setShowModal(true);
+      return;
+    }
+
+    // ✅ Verifica che il nome non sia già in uso da un'altra squadra
+    const nomeEsistente = squadre.find(s => 
+      s.id !== squadraUtente.id && 
+      s.nome.toLowerCase().trim() === nuovoNomeSquadra.toLowerCase().trim()
+    );
+    
+    if (nomeEsistente) {
+      setModalMessage(`Il nome "${nuovoNomeSquadra}" è già utilizzato da un'altra squadra. Scegli un nome diverso.`);
       setShowModal(true);
       return;
     }
@@ -833,7 +912,7 @@ function Profilo() {
                   <ul>
                     <li>{richiesta.giocatoreRichiestoDettagli?.nome || 'Nome non disponibile'} (Valore attuale: {richiesta.giocatoreRichiestoDettagli?.valoreAttuale || 'N/A'}€)</li>
                   </ul>
-                  <p><strong>Crediti offerti:</strong> {richiesta.creditiOfferti}€</p>
+                  <p><strong>Crediti offerti:</strong> {richiesta.creditiOfferti || 0}€</p>
                 </>
               ) : (
                 <>
@@ -849,6 +928,9 @@ function Profilo() {
                       <li key={g.id}>{g.nome} (Valore attuale: {g.valoreAttuale || 'N/A'}€)</li>
                     ))}
                   </ul>
+                  {richiesta.creditiOfferti && richiesta.creditiOfferti > 0 && (
+                    <p><strong>💰 Crediti aggiuntivi offerti:</strong> <span style={{color: 'green', fontWeight: 'bold'}}>{richiesta.creditiOfferti}€</span></p>
+                  )}
                 </>
               )}
               
@@ -856,14 +938,16 @@ function Profilo() {
               <button
                 className="btn btn-success me-2"
                 onClick={() => handleAccettaScambio(richiesta)}
+                disabled={richiesteElaborate.has(richiesta.id)}
               >
-                Accetta
+                {richiesteElaborate.has(richiesta.id) ? 'Elaborando...' : 'Accetta'}
               </button>
               <button
                 className="btn btn-danger"
                 onClick={() => handleRifiutaScambio(richiesta.id)}
+                disabled={richiesteElaborate.has(richiesta.id)}
               >
-                Rifiuta
+                {richiesteElaborate.has(richiesta.id) ? 'Elaborando...' : 'Rifiuta'}
               </button>
             </div>
           </div>

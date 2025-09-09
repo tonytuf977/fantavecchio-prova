@@ -77,10 +77,10 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
       valoreIniziale: nuovoValore,
     };
 
-    // Aggiorna il documento del giocatore nella raccolta Giocatori
+    // Aggiorna il documento del giocatore nella raccolta Giocatori usando l'ID
     await updateDoc(giocatoreRef, datiAggiornati);
 
-    // Aggiorna il documento del giocatore nella sottoraccolta giocatori della squadra
+    // Aggiorna il documento del giocatore nella sottoraccolta giocatori della squadra usando l'ID
     const giocatoreSquadraRef = doc(db, `Squadre/${squadraId}/giocatori`, giocatoreId);
     await setDoc(giocatoreSquadraRef, datiAggiornati, { merge: true });
 

@@ -21,6 +21,9 @@ function ListaSquadre() {
   const [rinnoviPendenti, setRinnoviPendenti] = useState({});
   const [modifiedPlayers, setModifiedPlayers] = useState({});
   const [tempoCongelamento, setTempoCongelamento] = useState({});
+  const [verificaRisultati, setVerificaRisultati] = useState(null);
+  const [showVerificaRisultati, setShowVerificaRisultati] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
     const auth = getAuth();
@@ -135,8 +138,43 @@ function ListaSquadre() {
     }
   };
 
+  // ✅ Modifico la funzione handleSquadraClick per caricare anche i tempi di congelamento
   const handleSquadraClick = (squadra) => {
     setSelectedSquadra(squadra);
+    setGiocatori([]);
+    setIsLoading(true);
+    setError(null);
+    setModifiedPlayers({});
+    setTempoCongelamento({}); // Reset tempo congelamento
+    
+    const fetchGiocatori = async () => {
+      try {
+        const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
+        const snapshot = await getDocs(giocatoriRef);
+        const giocatoriData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setGiocatori(giocatoriData);
+        
+        // ✅ Carica i tempi di congelamento esistenti
+        const tempiCongelamento = {};
+        giocatoriData.forEach(giocatore => {
+          if (giocatore.tempoCongelamento) {
+            tempiCongelamento[giocatore.id] = giocatore.tempoCongelamento;
+          }
+        });
+        setTempoCongelamento(tempiCongelamento);
+        
+        console.log(`✅ Caricati ${giocatoriData.length} giocatori per squadra ${squadra.nome}`);
+        console.log(`✅ Caricati ${Object.keys(tempiCongelamento).length} tempi di congelamento`);
+        
+      } catch (error) {
+        console.error('Errore nel recupero dei giocatori:', error);
+        setError('Errore nel caricamento dei giocatori');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchGiocatori();
   };
 
   const handleEdit = (giocatoreId, field, value) => {
@@ -270,10 +308,288 @@ const handleApplyFilter = (giocatoreId, filter) => {
   };
 
   const isSerieA = (giocatore) => {
-    return giocatore.squadraSerieA && giocatore.squadraSerieA !== 'Svincolato *';
+    // Un giocatore è in una squadra se ha il campo squadra valorizzato (diverso da null, undefined o stringa vuota)
+    const squadra = giocatore.squadra;
+    return squadra !== null && 
+           squadra !== undefined && 
+           squadra !== '';
   };
 
+  // Funzione per verificare lo stato delle scadenze
+  const verificaScadenze = async () => {
+    if (!selectedSquadra) {
+      alert('Seleziona prima una squadra');
+      return;
+    }
 
+    try {
+      console.log('Inizio verifica stato scadenze...');
+      
+      // Recupera tutti i giocatori dalla collezione generale Giocatori
+      const giocatoriSnapshot = await getDocs(collection(db, 'Giocatori'));
+      let giocatoriConSquadra = [];
+      let giocatoriSenzaSquadra = [];
+      let giocatoriIncorretti = [];
+
+      for (const giocatoreDoc of giocatoriSnapshot.docs) {
+        const giocatore = giocatoreDoc.data();
+        const squadra = giocatore.squadra; // Campo che indica se il giocatore ha una squadra
+        
+        // Determina se il giocatore ha una squadra
+        const haSquadra = squadra !== null && squadra !== undefined && squadra !== '';
+        
+        if (haSquadra) {
+          // Il giocatore ha una squadra
+          giocatoriConSquadra.push({
+            id: giocatoreDoc.id,
+            nome: giocatore.nome || 'N/A',
+            squadra: squadra,
+            scadenza: giocatore.scadenza,
+            corretto: giocatore.scadenza !== null && giocatore.scadenza !== undefined && giocatore.scadenza !== ''
+          });
+          
+          // Se ha squadra ma non ha scadenza, è incorretto
+          if (!giocatore.scadenza || giocatore.scadenza === '') {
+            giocatoriIncorretti.push({
+              id: giocatoreDoc.id,
+              nome: giocatore.nome || 'N/A',
+              squadra: squadra,
+              scadenza: giocatore.scadenza || 'Mancante',
+              problema: 'Ha squadra ma manca la scadenza (contratto congelato)',
+              tipo: 'Con Squadra'
+            });
+          }
+        } else {
+          // Il giocatore non ha una squadra
+          giocatoriSenzaSquadra.push({
+            id: giocatoreDoc.id,
+            nome: giocatore.nome || 'N/A',
+            squadra: squadra || 'null/vuoto',
+            scadenza: giocatore.scadenza,
+            corretto: !giocatore.scadenza || giocatore.scadenza === ''
+          });
+          
+          // Se non ha squadra ma ha scadenza, è incorretto
+          if (giocatore.scadenza && giocatore.scadenza !== '') {
+            giocatoriIncorretti.push({
+              id: giocatoreDoc.id,
+              nome: giocatore.nome || 'N/A',
+              squadra: squadra || 'null/vuoto',
+              scadenza: giocatore.scadenza,
+              problema: 'Non ha squadra ma ha scadenza (dovrebbe essere congelato)',
+              tipo: 'Senza Squadra'
+            });
+          }
+        }
+      }
+
+      const risultati = {
+        totaleGiocatori: giocatoriSnapshot.docs.length,
+        giocatoriConSquadra: giocatoriConSquadra.length,
+        giocatoriSenzaSquadra: giocatoriSenzaSquadra.length,
+        giocatoriIncorretti: giocatoriIncorretti.length,
+        dettagliIncorretti: giocatoriIncorretti,
+        giocatoriConSquadraCorretti: giocatoriConSquadra.filter(g => g.corretto).length,
+        giocatoriSenzaSquadraCorretti: giocatoriSenzaSquadra.filter(g => g.corretto).length
+      };
+
+      setVerificaRisultati(risultati);
+      setShowVerificaRisultati(true);
+      
+      console.log('Verifica scadenze completata:', risultati);
+      
+    } catch (error) {
+      console.error('Errore nella verifica stato scadenze:', error);
+      alert(`Errore nella verifica: ${error.message}`);
+    }
+  };
+
+  // Funzione per correggere automaticamente le scadenze
+  const correggiScadenze = async () => {
+    if (!selectedSquadra) {
+      alert('Seleziona prima una squadra');
+      return;
+    }
+
+    try {
+      let giocatoriSbloccati = 0;
+      let giocatoriCongelati = 0;
+      
+      // Recupera tutti i giocatori dalla collezione generale
+      const giocatoriSnapshot = await getDocs(collection(db, 'Giocatori'));
+      
+      for (const giocatoreDoc of giocatoriSnapshot.docs) {
+        const giocatore = giocatoreDoc.data();
+        const squadra = giocatore.squadra;
+        
+        // Determina se il giocatore ha una squadra
+        const haSquadra = squadra !== null && squadra !== undefined && squadra !== '';
+        
+        let needsUpdate = false;
+        let updateData = {};
+        
+        if (haSquadra) {
+          // Il giocatore ha squadra -> deve avere scadenza
+          if (!giocatore.scadenza || giocatore.scadenza === '') {
+            // Sblocca: assegna una scadenza di default (es. +1 anno)
+            const defaultScadenza = new Date();
+            defaultScadenza.setFullYear(defaultScadenza.getFullYear() + 1);
+            updateData.scadenza = defaultScadenza.toISOString().split('T')[0];
+            needsUpdate = true;
+            giocatoriSbloccati++;
+          }
+        } else {
+          // Il giocatore non ha squadra -> deve essere congelato
+          if (giocatore.scadenza && giocatore.scadenza !== '') {
+            // Congela: rimuovi la scadenza
+            updateData.scadenza = null;
+            needsUpdate = true;
+            giocatoriCongelati++;
+          }
+        }
+        
+        if (needsUpdate) {
+          // Aggiorna nella collezione generale
+          const giocatoreGeneraleRef = doc(db, 'Giocatori', giocatoreDoc.id);
+          await updateDoc(giocatoreGeneraleRef, updateData);
+          
+          // Se il giocatore ha una squadra, aggiorna anche nella sottocollection della squadra
+          if (haSquadra) {
+            const squadreSnapshot = await getDocs(collection(db, 'Squadre'));
+            for (const squadraDoc of squadreSnapshot.docs) {
+              try {
+                const giocatoreSquadraRef = doc(db, `Squadre/${squadraDoc.id}/giocatori`, giocatoreDoc.id);
+                await updateDoc(giocatoreSquadraRef, updateData);
+                break; // Trovato e aggiornato, esci dal loop
+              } catch (err) {
+                // Giocatore non trovato in questa squadra, continua
+                continue;
+              }
+            }
+          }
+        }
+      }
+      
+      // Ricarica i giocatori della squadra selezionata per vedere le modifiche
+      if (selectedSquadra) {
+        const giocatoriRef = collection(db, `Squadre/${selectedSquadra.id}/giocatori`);
+        const giocatoriSnap = await getDocs(giocatoriRef);
+        const giocatoriList = giocatoriSnap.docs.map(doc => {
+          const data = { id: doc.id, ...doc.data() };
+          if (!data.competizione || (Array.isArray(data.competizione) && data.competizione.length === 0)) {
+            data.competizione = ['campionato'];
+          }
+          if (data.competizione && !Array.isArray(data.competizione)) {
+            data.competizione = [data.competizione];
+          }
+          return data;
+        });
+        setGiocatori(giocatoriList);
+      }
+      
+      alert(`Correzione completata!\n\n✅ Giocatori sbloccati (con squadra): ${giocatoriSbloccati}\n❄️ Giocatori congelati (senza squadra): ${giocatoriCongelati}\n\nOra tutti i giocatori hanno lo stato scadenza corretto.`);
+      
+      // Aggiorna la verifica
+      verificaScadenze();
+      
+    } catch (error) {
+      console.error('Errore nella correzione automatica:', error);
+      alert(`Errore durante la correzione automatica: ${error.message}`);
+    }
+  };
+
+  // Funzione per ripristinare le statistiche di tutti i giocatori di TUTTE le squadre
+  const ripristinaStatistiche = async () => {
+    if (!window.confirm('⚠️ ATTENZIONE: Questa operazione ripristinerà le statistiche di TUTTI i giocatori di TUTTE le squadre!\n\n✅ Cosa farà:\n- Azzererà tutte le statistiche (gol, assist, presenze, ammonizioni, ecc.)\n- Imposterà valore attuale = valore iniziale per tutti i giocatori\n- NON toccherà le scadenze\n\nSei sicuro di voler continuare? Questa azione non può essere annullata.')) {
+      return;
+    }
+
+    try {
+      console.log('🔄 Inizio ripristino statistiche globale...');
+      
+      let totalePlayers = 0;
+      let successPlayers = 0;
+      let errorPlayers = 0;
+      
+      // Ottieni tutte le squadre
+      const squadreSnapshot = await getDocs(collection(db, 'Squadre'));
+      const tutteSquadre = squadreSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log(`📊 Trovate ${tutteSquadre.length} squadre da processare`);
+      
+      // Processa ogni squadra
+      for (const squadra of tutteSquadre) {
+        console.log(`\n🏟️ Processando squadra: ${squadra.nome} (ID: ${squadra.id})`);
+        
+        try {
+          // Ottieni tutti i giocatori della squadra dalla sottoraccolta
+          const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
+          const giocatoriSnapshot = await getDocs(giocatoriRef);
+          const giocatoriSquadra = giocatoriSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          console.log(`👥 Trovati ${giocatoriSquadra.length} giocatori nella squadra ${squadra.nome}`);
+          totalePlayers += giocatoriSquadra.length;
+          
+          // Processa ogni giocatore della squadra
+          for (const giocatore of giocatoriSquadra) {
+            try {
+              const statisticheReset = {
+                gol: 0,
+                assist: 0,
+                ammonizioni: 0,
+                espulsioni: 0,
+                autogol: 0,
+                presenze: 0,
+                voto: 0,
+                golSubiti: 0,
+                rigoriParati: 0,
+                valoreAttuale: giocatore.valoreIniziale || giocatore.valoreAttuale || 0
+              };
+              
+              // ✅ Aggiorna nella collezione generale Giocatori
+              const giocatoreRef = doc(db, 'Giocatori', giocatore.id);
+              await updateDoc(giocatoreRef, statisticheReset);
+              
+              // ✅ Aggiorna nella sottoraccolta della squadra
+              const giocatoreSquadraRef = doc(db, `Squadre/${squadra.id}/giocatori`, giocatore.id);
+              await updateDoc(giocatoreSquadraRef, statisticheReset);
+              
+              console.log(`✅ Statistiche ripristinate per: ${giocatore.nome} (${squadra.nome})`);
+              successPlayers++;
+              
+            } catch (playerError) {
+              console.error(`❌ Errore per giocatore ${giocatore.nome} in ${squadra.nome}:`, playerError);
+              errorPlayers++;
+            }
+          }
+          
+        } catch (teamError) {
+          console.error(`❌ Errore nel processare squadra ${squadra.nome}:`, teamError);
+          // In caso di errore nella squadra, incrementa solo i giocatori che erano stati contati
+        }
+      }
+      
+      console.log(`\n📊 RIEPILOGO RIPRISTINO GLOBALE:`);
+      console.log(`👥 Totale giocatori processati: ${totalePlayers}`);
+      console.log(`✅ Successi: ${successPlayers}`);
+      console.log(`❌ Errori: ${errorPlayers}`);
+      console.log(`📈 Percentuale successo: ${Math.round((successPlayers / totalePlayers) * 100)}%`);
+      console.log(`🔄 Operazioni eseguite:`);
+      console.log(`   📊 Statistiche azzerate: gol, assist, ammonizioni, espulsioni, autogol, presenze, voto, golSubiti, rigoriParati`);
+      console.log(`   💰 Valore iniziale = valore attuale per tutti i giocatori`);
+      console.log(`   📅 Scadenze: NON MODIFICATE`);
+      
+      alert(`🎉 Ripristino globale completato!\n\n📊 Risultati:\n✅ ${successPlayers} giocatori ripristinati con successo\n❌ ${errorPlayers} errori\n👥 ${totalePlayers} giocatori totali processati\n\n🔄 Tutte le statistiche sono state azzerate e i valori attuali sono stati sincronizzati con quelli iniziali.\nLe scadenze sono rimaste invariate.`);
+      
+      // Se c'è una squadra selezionata, ricarica i suoi dati
+      if (selectedSquadra) {
+        handleSquadraClick(selectedSquadra);
+      }
+      
+    } catch (error) {
+      console.error('❌ Errore generale nel ripristino statistiche:', error);
+      alert('Si è verificato un errore generale durante il ripristino delle statistiche: ' + error.message);
+    }
+  };
 
   const handleSaveAll = async () => {
     if (!selectedSquadra) {
@@ -451,17 +767,23 @@ const handleApplyFilter = (giocatoreId, filter) => {
     return 'text-danger';
   };
 
-  const getScadenzaClass = (scadenza) => {
-    if (!scadenza) return '';
-    const now = new Date();
-    const dataScadenza = new Date(scadenza);
-    const sixMonthsFromNow = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
-    if (dataScadenza < now) {
-      return 'text-danger'; // Past due
-    } else if (dataScadenza <= sixMonthsFromNow) {
-      return 'text-danger'; // Less than 3 months away
+  // Aggiorno la funzione getScadenzaClass per supportare giocatori congelati
+  const getScadenzaClass = (scadenza, squadraSerieA = null) => {
+    // Se il giocatore non ha squadra Serie A (congelato), usa stile diverso
+    if (!squadraSerieA || squadraSerieA === null) {
+      return 'text-muted'; // Grigio per giocatori congelati
     }
-    return 'text-success'; // More than 3 months away
+    
+    // Logica originale per giocatori con squadra Serie A
+    if (!scadenza) return 'text-danger';
+    
+    const oggi = new Date();
+    const dataScadenza = new Date(scadenza);
+    const differenzaMesi = (dataScadenza.getFullYear() - oggi.getFullYear()) * 12 + dataScadenza.getMonth() - oggi.getMonth();
+    
+    if (differenzaMesi <= 6) return 'text-danger';
+    if (differenzaMesi <= 12) return 'text-warning';
+    return 'text-success';
   };
 
   const isAdmin = currentUser?.ruolo === 'admin';
@@ -486,18 +808,29 @@ const handleApplyFilter = (giocatoreId, filter) => {
   };
 
   const handleSaveTempoCongelamento = async (giocatoreId, value) => {
+    if (!isAdmin) return; // Solo admin può modificare
+    
     try {
-      const giocatoreRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
-      await setDoc(giocatoreRef, { tempoCongelamento: value }, { merge: true });
-
-      const giocatoreGeneraleRef = doc(db, 'Giocatori', giocatoreId);
-      await setDoc(giocatoreGeneraleRef, { tempoCongelamento: value }, { merge: true });
-
-      setTempoCongelamento(prev => ({ ...prev, [giocatoreId]: value }));
-      alert("Tempo di congelamento salvato con successo!");
-    } catch (err) {
-      console.error("Errore nel salvataggio del tempo di congelamento:", err);
-      alert(`Errore nel salvataggio del tempo di congelamento: ${err.message}`);
+      console.log(`Salvando tempo congelamento per giocatore ${giocatoreId}: "${value}"`);
+      
+      // Salva nella collezione generale Giocatori
+      const giocatoreRef = doc(db, 'Giocatori', giocatoreId);
+      await updateDoc(giocatoreRef, { 
+        tempoCongelamento: value 
+      });
+      
+      // Salva nella sottocollection della squadra
+      if (selectedSquadra) {
+        const giocatoreSquadraRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
+        await updateDoc(giocatoreSquadraRef, { 
+          tempoCongelamento: value 
+        });
+      }
+      
+      console.log(`✅ Tempo congelamento salvato per giocatore ${giocatoreId}`);
+      
+    } catch (error) {
+      console.error(`Errore salvando tempo congelamento per giocatore ${giocatoreId}:`, error);
     }
   };
 
@@ -518,14 +851,14 @@ const handleApplyFilter = (giocatoreId, filter) => {
           continue;
         }
 
-        // Verifica se il giocatore è già nella lista giovani
+        // Verifica se il giocatore è già nella lista giovani usando l'ID
         const giocatoreGiaPresente = listaGiovani.find(g => g.id === giocatoreId);
         if (giocatoreGiaPresente) {
           giaSalvati++;
           continue;
         }
 
-        // Aggiungi alla sottocollection listaGiovani
+        // Aggiungi alla sottocollection listaGiovani usando l'ID come documento
         const listaGiovaniRef = doc(db, `Squadre/${selectedSquadra.id}/listaGiovani`, giocatoreId);
         await setDoc(listaGiovaniRef, {
           ...giocatore,
@@ -644,14 +977,86 @@ const handleApplyFilter = (giocatoreId, filter) => {
           </p>
           <h3>Giocatori di {selectedSquadra.nome || selectedSquadra.id}</h3>
           {isAdmin && (
-            <button
-              className="btn btn-success mb-3"
-              onClick={handleSaveAll}
-              disabled={Object.keys(modifiedPlayers).length === 0}
-            >
-              Salva Tutto
-            </button>
+            <div className="mb-3">
+              <button
+                className="btn btn-success me-2"
+                onClick={handleSaveAll}
+                disabled={Object.keys(modifiedPlayers).length === 0}
+              >
+                Salva Tutto
+              </button>
+              <button
+                className="btn btn-warning me-2 mb-2"
+                onClick={ripristinaStatistiche}
+                title="⚠️ ATTENZIONE: Ripristina statistiche di TUTTI i giocatori di TUTTE le squadre! Azzera tutte le statistiche e sincronizza valore attuale = valore iniziale"
+              >
+                🌍 Ripristina Statistiche Globali
+              </button>
+            </div>
           )}
+
+          {/* Risultati della verifica */}
+          {showVerificaRisultati && verificaRisultati && (
+            <div className="mb-4">
+              <div className="card">
+                <div className="card-header">
+                  <h6>📊 Risultati Verifica Stato Scadenze - {selectedSquadra.nome}</h6>
+                </div>
+                <div className="card-body">
+                  <div className="row mb-3">
+                    <div className="col-md-3">
+                      <div className="text-center p-2 border rounded bg-light">
+                        <small>Totale</small>
+                        <div className="h5 text-primary">{verificaRisultati.totaleGiocatori}</div>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="text-center p-2 border rounded bg-success text-white">
+                        <small>Con Squadra</small>
+                        <div className="h5">{verificaRisultati.giocatoriConSquadra}</div>
+                        <small>Corretti: {verificaRisultati.giocatoriConSquadraCorretti}</small>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="text-center p-2 border rounded bg-secondary text-white">
+                        <small>Senza Squadra</small>
+                        <div className="h5">{verificaRisultati.giocatoriSenzaSquadra}</div>
+                        <small>Corretti: {verificaRisultati.giocatoriSenzaSquadraCorretti}</small>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="text-center p-2 border rounded bg-danger text-white">
+                        <small>Da Correggere</small>
+                        <div className="h5">{verificaRisultati.giocatoriIncorretti}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {verificaRisultati.giocatoriIncorretti > 0 && (
+                    <div className="alert alert-warning">
+                      <strong>⚠️ Trovati {verificaRisultati.giocatoriIncorretti} giocatori con scadenze incorrette.</strong>
+                      <br/>
+                      Usa il pulsante "🔧 Correggi Automaticamente" per risolvere i problemi.
+                    </div>
+                  )}
+
+                  {verificaRisultati.giocatoriIncorretti === 0 && (
+                    <div className="alert alert-success">
+                      <strong>✅ Perfetto!</strong> Tutti i giocatori hanno lo stato scadenza corretto.
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setShowVerificaRisultati(false)}
+                    className="btn btn-outline-secondary btn-sm"
+                  >
+                    Nascondi Risultati
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <table className="table table-striped table-bordered table-hover">
             <thead className="table-primary">
               <tr>
@@ -726,46 +1131,43 @@ const handleApplyFilter = (giocatoreId, filter) => {
                     />
                   </td>
                   <td>
-                    {!isSerieA(giocatore) ? (
-                      <>
-                        <input
-                          type="text"
-                          className="form-control"
-                          value=""
-                          disabled
-                          placeholder="Data bloccata"
-                        />
+                    {!giocatore.squadraSerieA || giocatore.squadraSerieA === null ? (
+                      // Giocatore CONGELATO (squadraSerieA = null) -> Campo tempo congelamento
+                      <div className="d-flex align-items-center">
                         {isAdmin ? (
-                          <>
-                            <input
-                              type="text"
-                              className="form-control mt-2"
-                              placeholder="Inserisci tempo rimanente (es. 1 anno)"
-                              value={tempoCongelamento[giocatore.id] || giocatore.tempoCongelamento || ''}
-                              onChange={(e) => setTempoCongelamento(prev => ({ ...prev, [giocatore.id]: e.target.value }))}
-                            />
-                            <button
-                              className="btn btn-sm btn-primary mt-2"
-                              onClick={() => handleSaveTempoCongelamento(giocatore.id, tempoCongelamento[giocatore.id])}
-                              disabled={!tempoCongelamento[giocatore.id]}
-                            >
-                              Salva Tempo Congelamento
-                            </button>
-                          </>
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            value={tempoCongelamento[giocatore.id] || ''}
+                            onChange={(e) => setTempoCongelamento({
+                              ...tempoCongelamento,
+                              [giocatore.id]: e.target.value
+                            })}
+                            onBlur={() => handleSaveTempoCongelamento(giocatore.id, tempoCongelamento[giocatore.id] || '')}
+                            placeholder="Tempo congelamento"
+                            style={{ width: '150px' }}
+                          />
                         ) : (
-                          <div className="text-date small mt-1">
-                            Tempo rimanente contratto: {giocatore.tempoCongelamento || 'N/A'}
-                          </div>
+                          <span className="text-muted">
+                            {tempoCongelamento[giocatore.id] || 'Contratto congelato'}
+                          </span>
                         )}
-                      </>
+                        <span className="badge bg-secondary ms-2">❄️ Congelato</span>
+                      </div>
                     ) : (
-                      <input
-                        type="date"
-                        value={giocatore.scadenza || ''}
-                        onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
-                        className={`form-control ${getScadenzaClass(giocatore.scadenza)}`}
-                        disabled={!isAdmin}
-                      />
+                      // Giocatore ATTIVO (squadraSerieA ≠ null) -> Logica scadenza normale
+                      isAdminOrUtente ? (
+                        <input
+                          type="date"
+                          className={`form-control form-control-sm ${getScadenzaClass(giocatore.scadenza, giocatore.squadraSerieA)}`}
+                          value={giocatore.scadenza || ''}
+                          onChange={(e) => handleEdit(giocatore.id, 'scadenza', e.target.value)}
+                        />
+                      ) : (
+                        <span className={getScadenzaClass(giocatore.scadenza, giocatore.squadraSerieA)}>
+                          {giocatore.scadenza || 'N/A'}
+                        </span>
+                      )
                     )}
                   </td>
                   <td>{giocatore.ammonizioni}</td>
@@ -854,7 +1256,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
                     <th>Presenze</th>
                     <th>Valore Iniziale</th>
                     <th>Valore Attuale</th>
-                    <th>Data Inserimento</th>
+                    <th>Scadenza</th>
                     <th>Ammonizioni</th>
                     <th>Assist</th>
                     <th>Autogol</th>
@@ -873,7 +1275,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
                       <td>{giocatore.presenze}</td>
                       <td>{giocatore.valoreIniziale}</td>
                       <td>{giocatore.valoreAttuale}</td>
-                      <td>{giocatore.dataInserimentoGiovani || 'N/A'}</td>
+                      <td>{giocatore.scadenza || 'N/A'}</td>
                       <td>{giocatore.ammonizioni}</td>
                       <td>{giocatore.assist}</td>
                       <td>{giocatore.autogol}</td>

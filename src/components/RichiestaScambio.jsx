@@ -27,7 +27,7 @@ function RichiestaScambio() {
   const [finestraScambiAperta, setFinestraScambiAperta] = useState(true);
   
   // Nuovi stati per scambi a crediti
-  const [tipoScambio, setTipoScambio] = useState('giocatori'); // 'giocatori' o 'crediti'
+  const [tipoScambio, setTipoScambio] = useState('giocatori'); // 'giocatori', 'crediti', o 'giocatori_crediti'
   const [giocatoreRichiesto, setGiocatoreRichiesto] = useState('');
   const [creditiOfferti, setCreditiOfferti] = useState('');
   
@@ -359,7 +359,7 @@ Buona fortuna a tutti! 🍀
       );
       const querySnapshot = await getDocs(q);
       return !querySnapshot.empty;
-    } else {
+    } else if (tipoScambio === 'crediti') {
       if (!giocatoreRichiesto || !creditiOfferti) return false;
       
       const richiesteRef = collection(db, 'RichiesteScambio');
@@ -373,7 +373,24 @@ Buona fortuna a tutti! 🍀
       );
       const querySnapshot = await getDocs(q);
       return !querySnapshot.empty;
+    } else if (tipoScambio === 'giocatori_crediti') {
+      if (giocatoriSelezionatiUtente.length === 0 || giocatoriSelezionatiAvversario.length === 0) return false;
+      
+      const richiesteRef = collection(db, 'RichiesteScambio');
+      const q = query(
+        richiesteRef,
+        where('squadraRichiedente', '==', squadraUtente.id),
+        where('squadraAvversaria', '==', squadraSelezionata),
+        where('giocatoriOfferti', '==', giocatoriSelezionatiUtente),
+        where('giocatoriRichiesti', '==', giocatoriSelezionatiAvversario),
+        where('creditiOfferti', '==', Number(creditiOfferti) || 0),
+        where('stato', 'in', ['In attesa', 'Approvata da admin'])
+      );
+      const querySnapshot = await getDocs(q);
+      return !querySnapshot.empty;
     }
+    
+    return false;
   };
 
   const handleSubmit = async (e) => {
@@ -397,7 +414,7 @@ Buona fortuna a tutti! 🍀
         setShowModal(true);
         return;
       }
-    } else {
+    } else if (tipoScambio === 'crediti') {
       if (!giocatoreRichiesto || !creditiOfferti) {
         setModalMessage('Seleziona un giocatore da richiedere e inserisci i crediti da offrire');
         setShowModal(true);
@@ -409,6 +426,22 @@ Buona fortuna a tutti! 🍀
         setModalMessage(`Non hai abbastanza crediti. Crediti disponibili: ${creditiDisponibili}, Crediti richiesti: ${creditiOfferti}`);
         setShowModal(true);
         return;
+      }
+    } else if (tipoScambio === 'giocatori_crediti') {
+      if (giocatoriSelezionatiUtente.length === 0 || giocatoriSelezionatiAvversario.length === 0) {
+        setModalMessage('Seleziona almeno un giocatore da offrire e uno da richiedere');
+        setShowModal(true);
+        return;
+      }
+      
+      // Crediti sono opzionali per giocatori_crediti, ma se inseriti devono essere validi
+      if (creditiOfferti && Number(creditiOfferti) > 0) {
+        const creditiDisponibili = squadraUtente.crediti || 0;
+        if (Number(creditiOfferti) > creditiDisponibili) {
+          setModalMessage(`Non hai abbastanza crediti. Crediti disponibili: ${creditiDisponibili}, Crediti richiesti: ${creditiOfferti}`);
+          setShowModal(true);
+          return;
+        }
       }
     }
 
@@ -424,11 +457,13 @@ Buona fortuna a tutti! 🍀
       let richiestaScambio;
       
       if (tipoScambio === 'giocatori') {
+        // Scambio giocatori (con crediti opzionali)
         richiestaScambio = {
           squadraRichiedente: squadraUtente.id,
           squadraAvversaria: squadraSelezionata,
           giocatoriOfferti: giocatoriSelezionatiUtente,
           giocatoriRichiesti: giocatoriSelezionatiAvversario,
+          creditiOfferti: creditiOfferti ? parseInt(creditiOfferti) : 0, // ✅ CREDITI OPZIONALI
           tipoScambio: 'giocatori',
           stato: 'In attesa',
           dataRichiesta: formatDate(),
@@ -437,11 +472,12 @@ Buona fortuna a tutti! 🍀
           accettataAvversario: false
         };
       } else {
+        // Offerta solo crediti
         richiestaScambio = {
           squadraRichiedente: squadraUtente.id,
           squadraAvversaria: squadraSelezionata,
           giocatoreRichiesto: giocatoreRichiesto,
-          creditiOfferti: Number(creditiOfferti),
+          creditiOfferti: parseInt(creditiOfferti),
           tipoScambio: 'crediti',
           stato: 'In attesa',
           dataRichiesta: formatDate(),
@@ -481,6 +517,11 @@ Buona fortuna a tutti! 🍀
             const giocatore = giocatoriAvversari.find(g => g.id === id);
             return `- ${giocatore.nome} (Valore: ${giocatore.valoreAttuale || 'N/A'}€)`;
           }).join('\n')}`;
+        
+        // ✅ AGGIUNGI CREDITI SE PRESENTI
+        if (creditiOfferti && parseInt(creditiOfferti) > 0) {
+          emailContent += `\n          Crediti aggiuntivi offerti: ${creditiOfferti}€`;
+        }
       } else {
         const giocatore = giocatoriAvversari.find(g => g.id === giocatoreRichiesto);
         emailContent += `
@@ -685,7 +726,7 @@ Buona fortuna a tutti! 🍀
               type="radio"
               id="scambioGiocatori"
               name="tipoScambio"
-              label="Scambio Giocatori"
+              label="Scambio Giocatori (con crediti opzionali)"
               checked={tipoScambio === 'giocatori'}
               onChange={() => setTipoScambio('giocatori')}
             />
@@ -693,7 +734,7 @@ Buona fortuna a tutti! 🍀
               type="radio"
               id="scambioCrediti"
               name="tipoScambio"
-              label="Offerta Crediti"
+              label="Offerta Solo Crediti"
               checked={tipoScambio === 'crediti'}
               onChange={() => setTipoScambio('crediti')}
             />
@@ -742,6 +783,23 @@ Buona fortuna a tutti! 🍀
                 ))}
               </select>
             </div>
+            <div className="mb-3">
+              <label className="form-label">
+                Crediti aggiuntivi da offrire (Disponibili: {squadraUtente?.crediti || 0}€):
+              </label>
+              <input
+                type="number"
+                className="form-control"
+                value={creditiOfferti}
+                onChange={(e) => setCreditiOfferti(e.target.value)}
+                min="0"
+                max={squadraUtente?.crediti || 0}
+                placeholder="Inserisci crediti aggiuntivi da offrire (opzionale)"
+              />
+              <small className="form-text text-muted">
+                Puoi aggiungere crediti alla tua offerta per renderla più appetibile
+              </small>
+            </div>
           </>
         ) : (
           <>
@@ -788,7 +846,7 @@ Buona fortuna a tutti! 🍀
         </div>
         
         <button type="submit" className="btn btn-primary" disabled={!finestraScambiAperta}>
-          Invia Richiesta di Scambio
+          {tipoScambio === 'crediti' ? 'Invia Offerta Crediti' : 'Invia Richiesta di Scambio'}
         </button>
       </form>
 

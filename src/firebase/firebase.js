@@ -8,14 +8,13 @@ import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyARdAe3_15_Ny4tjbg9tdadCJo0BPImIM4",
-  authDomain: "fantavecchio-manager.firebaseapp.com",
-  projectId: "fantavecchio-manager",
-  storageBucket: "fantavecchio-manager.firebasestorage.app",
-  messagingSenderId: "1087765312837",
-  appId: "1:1087765312837:web:06741c3f2b6f89efcaba2c"
+  apiKey: "AIzaSyB90jNBwzJTVF4zPEeO4NGaAe9XAlo11fg",
+  authDomain: "fanta-cf97c.firebaseapp.com",
+  projectId: "fanta-cf97c",
+  storageBucket: "fanta-cf97c.firebasestorage.app",
+  messagingSenderId: "946214530481",
+  appId: "1:946214530481:web:5823c60dc6c7616ce3e190"
 };
-
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

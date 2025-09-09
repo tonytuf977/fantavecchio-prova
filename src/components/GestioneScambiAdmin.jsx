@@ -32,26 +32,26 @@ function GestioneScambiAdmin() {
     const fetchRichiesteScambio = async () => {
       const q = query(collection(db, 'RichiesteScambio'), where('stato', '==', 'In attesa'));
       const querySnapshot = await getDocs(q);
-      const richieste = await Promise.all(querySnapshot.docs.map(async (doc) => {
-        const richiesta = { id: doc.id, ...doc.data() };
+      const richieste = await Promise.all(querySnapshot.docs.map(async (docSnapshot) => {
+        const richiesta = { id: docSnapshot.id, ...docSnapshot.data() };
+
+        // Carica sempre i nomi delle squadre
+        richiesta.squadraRichiedenteNome = await getSquadraNome(richiesta.squadraRichiedente);
+        richiesta.squadraAvversariaNome = await getSquadraNome(richiesta.squadraAvversaria);
 
         if (richiesta.tipoScambio === 'crediti') {
-          // Gestione scambio a crediti
-          const giocatoreRichiesto = await getGiocatoreDetails(richiesta.giocatoreRichiesto);
-          return {
-            ...richiesta,
-            giocatoreRichiestoDettagli: giocatoreRichiesto
-          };
+          // Per scambi a crediti, carica i dettagli del giocatore richiesto
+          const giocatoreRichiestoDettagli = await getGiocatoreDetails(richiesta.giocatoreRichiesto);
+          richiesta.giocatoreRichiestoDettagli = giocatoreRichiestoDettagli;
         } else {
-          // Gestione scambio tradizionale a giocatori
-          const giocatoriOfferti = await getGiocatoriDetails(richiesta.giocatoriOfferti || []);
-          const giocatoriRichiesti = await getGiocatoriDetails(richiesta.giocatoriRichiesti || []);
-          return {
-            ...richiesta,
-            giocatoriOfferti: giocatoriOfferti,
-            giocatoriRichiesti: giocatoriRichiesti
-          };
+          // Per scambi di giocatori (con o senza crediti), carica i dettagli dei giocatori
+          const giocatoriOffertiDettagli = await getGiocatoriDetails(richiesta.giocatoriOfferti || []);
+          const giocatoriRichiestiDettagli = await getGiocatoriDetails(richiesta.giocatoriRichiesti || []);
+          richiesta.giocatoriOfferti = giocatoriOffertiDettagli;
+          richiesta.giocatoriRichiesti = giocatoriRichiestiDettagli;
         }
+
+        return richiesta;
       }));
 
       setRichiesteScambio(richieste);
@@ -79,6 +79,17 @@ function GestioneScambiAdmin() {
       return null;
     }
     return giocatori.find(g => g.id === giocatoreId) || null;
+  };
+
+  // Funzione per ottenere il nome della squadra
+  const getSquadraNome = async (squadraId) => {
+    try {
+      const squadraDoc = await getDoc(doc(db, 'Squadre', squadraId));
+      return squadraDoc.exists() ? squadraDoc.data().nome : squadraId;
+    } catch (error) {
+      console.error('Errore nel caricamento nome squadra:', error);
+      return squadraId;
+    }
   };
 
   const handleApprova = async (richiesta) => {
@@ -549,8 +560,8 @@ Buona fortuna con le vostre rose finali! 🍀
             <h5 className="card-title">
               Richiesta di {richiesta.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'}
             </h5>
-            <p>Da: {richiesta.squadraRichiedente}</p>
-            <p>A: {richiesta.squadraAvversaria}</p>
+            <p>Da: {richiesta.squadraRichiedenteNome || richiesta.squadraRichiedente}</p>
+            <p>A: {richiesta.squadraAvversariaNome || richiesta.squadraAvversaria}</p>
             
             {richiesta.tipoScambio === 'crediti' ? (
               <>
@@ -572,6 +583,9 @@ Buona fortuna con le vostre rose finali! 🍀
                       <span key={g.id}> {g.nome || 'Nome non disponibile'} (Valore: {g.valoreAttuale || 'N/A'}€)</span>
                     ).reduce((prev, curr) => [prev, ', ', curr]) : 'Nessuno'}
                 </p>
+                {richiesta.creditiOfferti && richiesta.creditiOfferti > 0 && (
+                  <p><strong>💰 Crediti aggiuntivi offerti:</strong> <span style={{color: 'green', fontWeight: 'bold', fontSize: '1.1em'}}>{richiesta.creditiOfferti}€</span></p>
+                )}
               </>
             )}
             
