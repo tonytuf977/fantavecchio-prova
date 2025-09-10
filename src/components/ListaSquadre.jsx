@@ -659,106 +659,99 @@ const handleApplyFilter = (giocatoreId, filter) => {
   };
 
   const exportFilteredSquadre = async () => {
-    const workbook = XLSX.utils.book_new();
-    for (const squadra of squadre) {
-      const squadraData = [
-        ['Squadra:' + squadra.nome || 'N/A','Valore Rosa:' + squadra.valoreRosa || 'N/A','Crediti:' + squadra.crediti || 'N/A'],
-        ['Id','Nome', 'Posizione', 'Competizione', 'Gol', 'Presenze', 'Scadenza', 'ValoreIniziale', 'ValoreAttuale', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
-      ];
-      
-      // Dati Lista Giovani
-      const listaGiovaniData = [
-        ['Lista Giovani - ' + squadra.nome || 'N/A'],
-        ['Id','Nome', 'Posizione', 'Gol', 'Presenze', 'ValoreIniziale', 'ValoreAttuale', 'DataInserimento', 'Assist', 'Ammonizioni', 'Espulsioni', 'Autogol', 'MediaVoto', 'GolSubiti', 'RigoriParati', 'IdSquadra']
-      ];
-      
-      try {
-        const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
-        const giocatoriSnap = await getDocs(giocatoriRef);
-        const giocatori = giocatoriSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Recupera lista giovani
-        const listaGiovaniRef = collection(db, `Squadre/${squadra.id}/listaGiovani`);
-        const listaGiovaniSnap = await getDocs(listaGiovaniRef);
-        const listaGiovani = listaGiovaniSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Filtra giocatori principali (escludi quelli in lista giovani)
-        const giocatoriPrincipali = giocatori.filter(g => !listaGiovani.find(lg => lg.id === g.id));
-        
-        giocatoriPrincipali.sort(sortGiocatoriByRuolo);
-        giocatoriPrincipali.forEach(giocatore => {
-          const competizioniString = Array.isArray(giocatore.competizione) 
-            ? giocatore.competizione.join(', ') 
-            : (giocatore.competizione || 'campionato');
-            
-          squadraData.push([
-            giocatore.id || 'N/A',
-            giocatore.nome || 'N/A',
-            giocatore.posizione || 'N/A',
-            competizioniString,
-            giocatore.gol || 0,
-            giocatore.presenze || 0,
-            giocatore.scadenza || 'N/A',
-            giocatore.valoreIniziale || 0,
-            giocatore.valoreAttuale || 0,
-            giocatore.assist || 0,
-            giocatore.ammonizioni || 0,
-            giocatore.espulsioni || 0,
-            giocatore.autogol || 0,
-            giocatore.voto || 0,
-            giocatore.golSubiti || 0,
-            giocatore.rigoriParati || 0,
-            squadra.id || 'N/A'
+    try {
+      const workbook = XLSX.utils.book_new();
+      let totalGiocatoriEsportati = 0;
+      let squadreEsportate = 0;
+
+      console.log(`📊 Inizio export di tutte le squadre...`);
+
+      // ✅ ESPORTA TUTTE LE SQUADRE in un singolo file con fogli separati
+      for (const squadraData of squadre) {
+        try {
+          console.log(`\n📋 Processando squadra: ${squadraData.nome} (${squadraData.id})`);
+
+          // Carica giocatori principali della squadra corrente
+          const giocatoriRef = collection(db, `Squadre/${squadraData.id}/giocatori`);
+          const giocatoriSnapshot = await getDocs(giocatoriRef);
+          const giocatoriPrincipali = giocatoriSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+          // Carica lista giovani della squadra corrente
+          const giovaniRef = collection(db, `Squadre/${squadraData.id}/listaGiovani`);
+          const giovaniSnapshot = await getDocs(giovaniRef);
+          const giovaniArray = giovaniSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+          // Combina tutti i giocatori con indicazione del tipo
+          const tuttiGiocatori = [
+            ...giocatoriPrincipali.map(g => ({ ...g, tipo: 'Principale' })),
+            ...giovaniArray.map(g => ({ ...g, tipo: 'Giovane' }))
+          ];
+
+          console.log(`👥 Giocatori principali: ${giocatoriPrincipali.length}`);
+          console.log(`👶 Giovani: ${giovaniArray.length}`);
+          console.log(`📋 Totale squadra: ${tuttiGiocatori.length}`);
+
+          // ✅ FORMATO COMPLETO con tutti i campi necessari per RipristinoRoseSquadre
+          const worksheetData = [
+            // Prima riga: Nome squadra, vuoto, Crediti, vuoti fino alla colonna R con ID squadra
+            [`Squadra: ${squadraData.nome}`, '', `Crediti: ${squadraData.crediti || 0}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', `ID Squadra: ${squadraData.id}`],
+            // Seconda riga: intestazioni colonne - AGGIUNGO "Tipo" in colonna E
+            ['ID', 'Nome', 'Posizione', 'Competizione', 'Tipo', 'Gol', 'Presenze', 'Valore Iniziale', 'Valore Attuale', 'Scadenza', 'Ammonizioni', 'Assist', 'Autogol', 'Espulsioni', 'Gol Subiti', 'Media Voto', 'Rigori Parati', 'Squadra Serie A'],
+            // Dati giocatori
+            ...tuttiGiocatori.map(g => [
+              g.id || 'N/A',                                                           // A = ID
+              g.nome || 'N/A',                                                         // B = Nome
+              g.posizione || 'N/A',                                                    // C = Posizione
+              Array.isArray(g.competizione) ? g.competizione.join(';') : (g.competizione || 'campionato'), // D = Competizione
+              g.tipo || 'Principale',                                                  // E = Tipo (NUOVO CAMPO)
+              g.gol || 0,                                                             // F = Gol
+              g.presenze || 0,                                                        // G = Presenze
+              g.valoreIniziale || 0,                                                  // H = Valore Iniziale
+              g.valoreAttuale || 0,                                                   // I = Valore Attuale
+              g.scadenza || null,                                                     // J = Scadenza
+              g.ammonizioni || 0,                                                     // K = Ammonizioni
+              g.assist || 0,                                                          // L = Assist
+              g.autogol || 0,                                                         // M = Autogol
+              g.espulsioni || 0,                                                      // N = Espulsioni
+              g.golSubiti || 0,                                                       // O = Gol Subiti
+              g.voto || 0,                                                            // P = Media Voto
+              g.rigoriParati || 0,                                                    // Q = Rigori Parati
+              g.squadraSerieA || ''                                   // R = Squadra Serie A
+            ])
+          ];
+
+          // Crea il foglio per questa squadra
+          const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+          XLSX.utils.book_append_sheet(workbook, worksheet, squadraData.nome);
+
+          totalGiocatoriEsportati += tuttiGiocatori.length;
+          squadreEsportate++;
+
+        } catch (squadraError) {
+          console.error(`❌ Errore nell'export della squadra ${squadraData.nome}:`, squadraError);
+          // Crea un foglio di errore per questa squadra
+          const errorWorksheet = XLSX.utils.aoa_to_sheet([
+            [`Errore nell'export della squadra: ${squadraData.nome}`],
+            [`Errore: ${squadraError.message}`]
           ]);
-        });
-        
-        // Aggiungi lista giovani se presente
-        if (listaGiovani.length > 0) {
-          listaGiovani.sort(sortGiocatoriByRuolo);
-          listaGiovani.forEach(giocatore => {
-            listaGiovaniData.push([
-              giocatore.id || 'N/A',
-              giocatore.nome || 'N/A',
-              giocatore.posizione || 'N/A',
-              giocatore.gol || 0,
-              giocatore.presenze || 0,
-              giocatore.valoreIniziale || 0,
-              giocatore.valoreAttuale || 0,
-              giocatore.dataInserimentoGiovani || 'N/A',
-              giocatore.assist || 0,
-              giocatore.ammonizioni || 0,
-              giocatore.espulsioni || 0,
-              giocatore.autogol || 0,
-              giocatore.voto || 0,
-              giocatore.golSubiti || 0,
-              giocatore.rigoriParati || 0,
-              squadra.id || 'N/A'
-            ]);
-          });
+          XLSX.utils.book_append_sheet(workbook, errorWorksheet, `ERRORE_${squadraData.nome}`);
         }
-        
-        const worksheet = XLSX.utils.aoa_to_sheet(squadraData);
-        XLSX.utils.book_append_sheet(workbook, worksheet, squadra.nome || `Squadra ${squadra.id}`);
-        
-        // Aggiungi foglio lista giovani se ci sono giocatori
-        if (listaGiovani.length > 0) {
-          const worksheetGiovani = XLSX.utils.aoa_to_sheet(listaGiovaniData);
-          XLSX.utils.book_append_sheet(workbook, worksheetGiovani, `${squadra.nome}_Giovani` || `Squadra_${squadra.id}_Giovani`);
-        }
-        
-      } catch (error) {
-        console.error(`Errore nel recupero dei giocatori per la squadra ${squadra.id}:`, error);
-        const errorWorksheet = XLSX.utils.aoa_to_sheet([['Errore nel recupero dei dati per questa squadra']]);
-        XLSX.utils.book_append_sheet(workbook, errorWorksheet, `Errore Squadra ${squadra.id}`);
       }
-    }
-    const generateExcelFileName = () => {
+
+      // Genera il nome file con timestamp
       const now = new Date();
-      const date = now.toISOString().split('T')[0];
-      const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-      return `FantaVecchio_squadre_${date}_${time}.xlsx`;
-    };
-    XLSX.writeFile(workbook, generateExcelFileName());
+      const timestamp = now.toISOString().split('T')[0];
+      const fileName = `FantaVecchio_TutteSquadre_${timestamp}.xlsx`;
+
+      // Scarica il file
+      XLSX.writeFile(workbook, fileName);
+      
+      alert(`✅ Export completato! File salvato: ${fileName}\n📊 Riepilogo:\n🏟️ Squadre esportate: ${squadreEsportate}\n👥 Giocatori totali: ${totalGiocatoriEsportati}\n📄 Formato: Un foglio per squadra con campo "Tipo" in colonna E`);
+      
+    } catch (error) {
+      console.error('Errore durante l\'export:', error);
+      alert('Errore durante l\'export: ' + error.message);
+    }
   };
 
   const getValoreRosaClass = (valoreRosa) => {

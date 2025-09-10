@@ -207,57 +207,76 @@ function RipristinoRoseSquadre() {
         const creditiRaw = jsonData[0][2]?.toString() || '';
         const crediti = parseFloat(creditiRaw.replace(/^Crediti:/i, '').trim()) || 0;
         
-        // ✅ ESTRAZIONE ID SQUADRA dalla colonna Q3 - FORZA lettura diretta dalla cella
+        // ✅ ESTRAZIONE ID SQUADRA dalla colonna R1 - FORZA lettura diretta dalla cella
         let idSquadra = sheetName; // Default al nome del foglio se non trovato
         
-        // ✅ DEBUGGING COMPLETO per trovare l'ID squadra in Q3
-        console.log(`🔍 DEBUG Q3: Cerco ID squadra in Q3...`);
-        console.log(`📊 Lunghezza jsonData: ${jsonData.length}`);
-        console.log(`📊 Prima riga jsonData:`, jsonData[0]);
-        if (jsonData.length > 2) {
-          console.log(`📊 Terza riga jsonData (indice 2):`, jsonData[2]);
-          console.log(`📊 Valore in jsonData[2][16] (colonna Q):`, jsonData[2] ? jsonData[2][16] : 'undefined');
-        }
+        console.log('🔍 DEBUG R1: Cerco ID squadra in R1...');
+        console.log('📊 Prima riga jsonData:', jsonData[0]);
         
-        // Prova prima con jsonData dalla riga 3 (indice 2)
-        if (jsonData.length > 2 && jsonData[2] && jsonData[2][16]) {
-          idSquadra = jsonData[2][16]?.toString().trim();
-          console.log(`✅ ID Squadra trovato in jsonData[2][16]: "${idSquadra}"`);
+        // ✅ LETTURA CORRETTA: L'ID squadra è in R1 (riga 1, colonna R = indice 17)
+        if (jsonData.length > 0 && jsonData[0] && jsonData[0][17]) {
+          const cellR1 = jsonData[0][17]?.toString().trim();
+          console.log('📊 Contenuto cella R1:', cellR1);
+          
+          // Estrai solo l'ID dalla stringa "ID Squadra: XXXXX" o "ID: XXXXX"
+          if (cellR1.includes('ID Squadra:')) {
+            idSquadra = cellR1.replace('ID Squadra:', '').trim();
+          } else if (cellR1.includes('ID:')) {
+            idSquadra = cellR1.replace('ID:', '').trim();
+          } else {
+            idSquadra = cellR1; // Usa direttamente il valore se non ha prefissi
+          }
+          console.log('✅ ID Squadra estratto da R1:', idSquadra);
         } else {
           // Se jsonData non funziona, prova lettura diretta dalla cella
-          const cellQ3 = sheet[XLSX.utils.encode_cell({r: 2, c: 16})]; // Riga 3 (indice 2), Colonna Q (indice 16)
-          console.log(`📊 Cella Q3 diretta:`, cellQ3);
-          if (cellQ3 && cellQ3.v !== undefined && cellQ3.v !== null) {
-            idSquadra = cellQ3.v.toString().trim();
-            console.log(`✅ ID Squadra trovato in cella Q3: "${idSquadra}"`);
+          const cellR1 = sheet[XLSX.utils.encode_cell({r: 0, c: 17})]; // Riga 1 (indice 0), Colonna R (indice 17)
+          console.log('📊 Cella R1 diretta:', cellR1);
+          if (cellR1 && cellR1.v !== undefined && cellR1.v !== null) {
+            const cellValue = cellR1.v.toString().trim();
+            if (cellValue.includes('ID Squadra:')) {
+              idSquadra = cellValue.replace('ID Squadra:', '').trim();
+            } else if (cellValue.includes('ID:')) {
+              idSquadra = cellValue.replace('ID:', '').trim();
+            } else {
+              idSquadra = cellValue;
+            }
+            console.log('✅ ID Squadra dalla cella diretta R1:', idSquadra);
           } else {
-            console.warn(`⚠️ Q3 vuota in entrambi i metodi, uso nome foglio: "${idSquadra}"`);
-            // Prova anche altre celle vicine per debug
-            const cellP3 = sheet[XLSX.utils.encode_cell({r: 2, c: 15})]; // Colonna P
-            const cellR3 = sheet[XLSX.utils.encode_cell({r: 2, c: 17})]; // Colonna R
-            console.warn(`🔍 Debug celle vicine - P3:`, cellP3, 'R3:', cellR3);
+            console.warn('⚠️ ID Squadra non trovato in R1 per il foglio', sheetName, 'uso nome foglio come fallback');
+            idSquadra = sheetName;
           }
         }
         
-        console.log(`📋 DOCUMENTO: "${idSquadra}" | CAMPO nome: "${nomeSquadra}" | CAMPO crediti: ${crediti}`);
+        console.log('📋 DOCUMENTO:', idSquadra, '| CAMPO nome:', nomeSquadra, '| CAMPO crediti:', crediti);
 
-        const squadraRef = doc(db, 'Squadre', idSquadra); // ✅ USA L'ID SQUADRA da Q3 come nome documento
+        const squadraRef = doc(db, 'Squadre', idSquadra); // ✅ USA L'ID SQUADRA da R1 come nome documento
         const giocatoriSquadraRef = collection(squadraRef, 'giocatori');
 
+        // ✅ PULISCI COMPLETAMENTE LA SQUADRA PRIMA DI RIEMPIRLA
+        console.log('🧹 Pulizia completa squadra', idSquadra);
+        
+        // Elimina tutti i giocatori principali esistenti
         const giocatoriEsistenti = await getDocs(giocatoriSquadraRef);
         for (const docSnapshot of giocatoriEsistenti.docs) {
           await deleteDoc(docSnapshot.ref);
         }
+        
+        // Elimina tutti i giovani esistenti
+        const listaGiovaniRef = collection(squadraRef, 'listaGiovani');
+        const giovaniEsistenti = await getDocs(listaGiovaniRef);
+        for (const docSnapshot of giovaniEsistenti.docs) {
+          await deleteDoc(docSnapshot.ref);
+        }
 
+        let valoreRosaTotale = 0;
         let giocatoriAggiunti = 0;
+        let giocatoriCreati = 0;
+        let giocatoriAggiornati = 0;
         let scadenzeImportate = 0;
         let scadenzeNull = 0;
-        let giocatoriAggiornati = 0;
-        let giocatoriCreati = 0;
-        let valoreRosaTotale = 0; // Calcola il valore totale della rosa
         let idTrovati = 0;
         let idMancanti = 0;
-        
+
         // ✅ INIZIA DALLA RIGA 3 (indice 2) perché le prime 2 righe sono intestazioni
         for (let i = 2; i < jsonData.length; i++) {
           const row = jsonData[i];
@@ -267,22 +286,23 @@ function RipristinoRoseSquadre() {
           // A3 = ID/Nome (row[0])
           // C3 = Posizione (row[2]) 
           // D3 = Competizione (row[3])
-          // E3 = Gol (row[4])
-          // F3 = Presenze (row[5])
-          // G3 = Scadenza (row[6])
+          // E3 = Tipo (row[4]) - NUOVO CAMPO
+          // F3 = Gol (row[5])
+          // G3 = Presenze (row[6])
           // H3 = Valore Iniziale (row[7])
           // I3 = Valore Attuale (row[8])
-          // J3 = Assist (row[9])
+          // J3 = Scadenza (row[9])
           // K3 = Ammonizioni (row[10])
-          // L3 = Espulsioni (row[11])
+          // L3 = Assist (row[11])
           // M3 = Autogol (row[12])
-          // N3 = Media Voto (row[13])
+          // N3 = Espulsioni (row[13])
           // O3 = Gol Subiti (row[14])
-          // P3 = Rigori Parati (row[15])
-          // Q3 = ID Squadra (row[16])
+          // P3 = Media Voto (row[15])
+          // Q3 = Rigori Parati (row[16])
+          // R3 = Squadra Serie A (row[17])
 
-          // Leggi direttamente dalla cella Excel per la scadenza (colonna G)
-          const cellScadenza = sheet[XLSX.utils.encode_cell({r: i, c: 6})]; // Colonna G (indice 6)
+          // Leggi direttamente dalla cella Excel per la scadenza (colonna J)
+          const cellScadenza = sheet[XLSX.utils.encode_cell({r: i, c: 9})]; // Colonna J (indice 9)
           let scadenzaRaw = null;
           
           if (cellScadenza) {
@@ -299,7 +319,7 @@ function RipristinoRoseSquadre() {
           const nomeGiocatoreExcel = row[1]?.toString(); // Nome dalla colonna B dell'Excel (se presente)
           
           if (!idGiocatore) {
-            console.log(`⚠️ Saltando riga ${i}: ID mancante nella colonna A`);
+            console.log('⚠️ Saltando riga', i, ': ID mancante nella colonna A');
             idMancanti++;
             continue;
           } else {
@@ -319,36 +339,38 @@ function RipristinoRoseSquadre() {
               giocatoreEsistente = giocatoreDoc.data();
               // ✅ Priorità: Nome dall'Excel > Nome dal DB > ID come fallback
               nomeGiocatoreReale = nomeGiocatoreExcel || giocatoreEsistente.nome || idGiocatore;
-              console.log(`🔗 Giocatore esistente trovato: ID "${idGiocatore}" -> Nome "${nomeGiocatoreReale}"`);
+              console.log('🔗 Giocatore esistente trovato: ID', idGiocatore, '-> Nome', nomeGiocatoreReale);
             } else {
               // ✅ Nuovo giocatore: usa nome dall'Excel se presente, altrimenti ID
               nomeGiocatoreReale = nomeGiocatoreExcel || idGiocatore;
-              console.log(`🆕 Nuovo giocatore: ID "${idGiocatore}" -> Nome "${nomeGiocatoreReale}" (verrà creato)`);
+              console.log('🆕 Nuovo giocatore: ID', idGiocatore, '-> Nome', nomeGiocatoreReale, '(verrà creato)');
             }
           } catch (error) {
-            console.error(`❌ Errore nella ricerca per ID ${idGiocatore}:`, error);
+            console.error('❌ Errore nella ricerca per ID', idGiocatore, ':', error);
           }
 
-          console.log(`\n👤 Processando giocatore: ID "${idGiocatore}" -> Nome "${nomeGiocatoreReale}"`);
-          console.log(`📊 Dati Excel:`, {
+          console.log('\n👤 Processando giocatore: ID', idGiocatore, '-> Nome', nomeGiocatoreReale);
+          console.log('📊 Dati Excel:', {
             posizione: row[2],
             competizione: row[3], 
-            gol: row[4],
-            presenze: row[5],
+            tipo: row[4],         // ✅ NUOVO: Legge il tipo dalla colonna E
+            gol: row[5],         // ✅ AGGIORNATO: Gol dalla colonna F
+            presenze: row[6],    // ✅ AGGIORNATO: Presenze dalla colonna G
             scadenzaRaw: scadenzaRaw,
             valoreIniziale: row[7],
             valoreAttuale: row[8],
-            assist: row[9],
-            ammonizioni: row[10],
-            espulsioni: row[11],
-            autogol: row[12],
-            voto: row[13],
-            golSubiti: row[14],
-            rigoriParati: row[15]
+            assist: row[11],     // ✅ AGGIORNATO: Assist dalla colonna L
+            ammonizioni: row[10], // ✅ AGGIORNATO: Ammonizioni dalla colonna K
+            espulsioni: row[13],  // ✅ AGGIORNATO: Espulsioni dalla colonna N
+            autogol: row[12],     // ✅ AGGIORNATO: Autogol dalla colonna M
+            voto: row[15],        // ✅ AGGIORNATO: Voto dalla colonna P
+            golSubiti: row[14],   // ✅ AGGIORNATO: Gol Subiti dalla colonna O
+            rigoriParati: row[16], // ✅ AGGIORNATO: Rigori Parati dalla colonna Q
+            squadraSerieA: row[17] // ✅ AGGIORNATO: Squadra Serie A dalla colonna R
           });
           
           const scadenzaProcessata = formatScadenza(scadenzaRaw);
-          console.log(`📅 Scadenza finale per "${nomeGiocatoreReale}": "${scadenzaProcessata}"`);
+          console.log('📅 Scadenza finale per', nomeGiocatoreReale, ':', scadenzaProcessata);
           
           // Conta le scadenze
           if (scadenzaProcessata === null) {
@@ -358,36 +380,37 @@ function RipristinoRoseSquadre() {
           }
 
           const giocatore = {
-            id: idGiocatore, // ✅ ID dalla colonna A dell'Excel (es: "4431", "Vlahovic", etc.)
-            nome: nomeGiocatoreReale, // ✅ Nome del giocatore (preso dal DB o default all'ID)
-            posizione: row[2]?.toString() || '', // C3 - Posizione
-            competizioni: row[3]?.toString() || '', // D3 - Competizione  
-            gol: Number(row[4]) || 0, // E3 - Gol
-            presenze: Number(row[5]) || 0, // F3 - Presenze
-            scadenza: scadenzaProcessata, // G3 - Scadenza (processata)
-            valoreIniziale: Number(row[7]) || 0, // H3 - Valore Iniziale
-            valoreAttuale: Number(row[8]) || 0, // I3 - Valore Attuale
-            assist: Number(row[9]) || 0, // J3 - Assist
-            ammonizioni: Number(row[10]) || 0, // K3 - Ammonizioni
-            espulsioni: Number(row[11]) || 0, // L3 - Espulsioni
-            autogol: Number(row[12]) || 0, // M3 - Autogol
-            voto: Number(row[13]) || 0, // N3 - Media Voto
-            golSubiti: Number(row[14]) || 0, // O3 - Gol Subiti
-            rigoriParati: Number(row[15]) || 0, // P3 - Rigori Parati
-            squadra: idSquadra, // ✅ USA L'ID SQUADRA estratto da Q3
-            // ✅ Campo aggiuntivo per compatibilità
-            squadraSerieA: row[17]?.toString() || null,
-            tempoCongelamento: row[18] ? Number(row[18]) : null
+            id: idGiocatore,
+            nome: nomeGiocatoreReale,
+            posizione: row[2]?.toString() || '',
+            competizioni: row[3]?.toString() || '',
+            tipo: row[4]?.toString() || 'Principale', // ✅ NUOVO: Legge il tipo dalla colonna E
+            gol: Number(row[5]) || 0,        // ✅ AGGIORNATO: Gol dalla colonna F
+            presenze: Number(row[6]) || 0,   // ✅ AGGIORNATO: Presenze dalla colonna G
+            scadenza: scadenzaProcessata,
+            valoreIniziale: Number(row[7]) || 0,
+            valoreAttuale: Number(row[8]) || 0,
+            assist: Number(row[11]) || 0,    // ✅ AGGIORNATO: Assist dalla colonna L
+            ammonizioni: Number(row[10]) || 0, // ✅ AGGIORNATO: Ammonizioni dalla colonna K
+            espulsioni: Number(row[13]) || 0,  // ✅ AGGIORNATO: Espulsioni dalla colonna N
+            autogol: Number(row[12]) || 0,     // ✅ AGGIORNATO: Autogol dalla colonna M
+            voto: Number(row[15]) || 0,        // ✅ AGGIORNATO: Voto dalla colonna P
+            golSubiti: Number(row[14]) || 0,   // ✅ AGGIORNATO: Gol Subiti dalla colonna O
+            rigoriParati: Number(row[16]) || 0, // ✅ AGGIORNATO: Rigori Parati dalla colonna Q
+            squadra: idSquadra,  // ✅ IMPORTANTE: Usa l'ID squadra dal foglio, non il nome
+            squadraSerieA: row[17]?.toString() || null, // ✅ AGGIORNATO: Squadra Serie A dalla colonna R
+            tempoCongelamento: row[18] ? Number(row[18]) : null // ✅ AGGIORNATO: Tempo Congelamento dalla colonna S
           };
 
           // ✅ Aggiungi al totale valore rosa
           valoreRosaTotale += giocatore.valoreAttuale;
 
-          console.log(`💾 Salvando giocatore:`);
-          console.log(`   📝 Nome: "${giocatore.nome}"`);
-          console.log(`   🆔 ID: "${giocatore.id}"`);
-          console.log(`   🏠 Squadra: "${giocatore.squadra}"`);
-          console.log(`🔍 Path documento: Squadre/${idSquadra}/giocatori/${giocatore.id}`);
+          console.log('💾 Salvando giocatore:');
+          console.log('   📝 Nome:', giocatore.nome);
+          console.log('   🆔 ID:', giocatore.id);
+          console.log('   📋 Tipo:', giocatore.tipo); // ✅ NUOVO LOG
+          console.log('   🏠 Squadra ID:', giocatore.squadra); // ✅ AGGIORNATO: Mostra ID squadra
+          console.log('🔍 Path documento: Squadre/', idSquadra, '/giocatori/', giocatore.id);
 
           // ✅ SALVA: documento con ID dalla colonna A come chiave, dati corretti dentro
           const giocatoreRef = doc(giocatoriSquadraRef, giocatore.id); // Chiave documento = ID dalla colonna A
@@ -397,16 +420,16 @@ function RipristinoRoseSquadre() {
           const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatore.id); // Chiave documento = ID dalla colonna A
           await setDoc(giocatorePrincipaleRef, giocatore, { merge: false }); // ✅ merge: false sovrascrive completamente
 
-          console.log(`✅ Documento salvato/aggiornato:`);
-          console.log(`   🗂️  Chiave documento: "${giocatore.id}" (ID dalla colonna A dell'Excel)`);
-          console.log(`   📋 Campo nome: "${giocatore.nome}" (nome del giocatore)`);
-          console.log(`   🆔 Campo id: "${giocatore.id}" (ID dalla colonna A dell'Excel)`);
-          console.log(`   📅 Scadenza: "${giocatore.scadenza}"`);
-          console.log(`   💰 Valore iniziale: ${giocatore.valoreIniziale}`);
-          console.log(`   💰 Valore attuale: ${giocatore.valoreAttuale}`);
-          console.log(`   ${giocatoreEsistente ? '🔄 AGGIORNATO' : '🆕 CREATO'} in Lista Giocatori\n`);
+          // ✅ NUOVO: GESTIONE LISTA GIOVANI BASATA SUL CAMPO "TIPO"
+          if (giocatore.tipo === 'Giovane') {
+            console.log('👶 Aggiungendo', giocatore.nome, 'alla lista giovani...');
+            const giocatoreGiovaneRef = doc(listaGiovaniRef, giocatore.id);
+            await setDoc(giocatoreGiovaneRef, giocatore, { merge: false });
+            console.log('✅', giocatore.nome, 'aggiunto alla lista giovani');
+          } else {
+            console.log('👥', giocatore.nome, 'aggiunto alla lista giocatori principali');
+          }
 
-          // ✅ Conta se è stato aggiornato o creato
           if (giocatoreEsistente) {
             giocatoriAggiornati++;
           } else {
@@ -415,196 +438,81 @@ function RipristinoRoseSquadre() {
 
           giocatoriAggiunti++;
         }
-        
-        console.log(`\n📊 RIEPILOGO SQUADRA ${sheetName}:`);
-        console.log(`👥 Giocatori aggiunti: ${giocatoriAggiunti}`);
-        console.log(`🔄 Giocatori aggiornati: ${giocatoriAggiornati}`);
-        console.log(`🆕 Giocatori creati: ${giocatoriCreati}`);
-        console.log(`✅ Scadenze importate: ${scadenzeImportate}`);
-        console.log(`❌ Scadenze null: ${scadenzeNull}`);
-        console.log(`🔗 ID trovati nel database: ${idTrovati}`);
-        console.log(`⚠️ ID mancanti (temporanei): ${idMancanti}`);
-        console.log(`💰 Valore rosa totale: ${valoreRosaTotale}€`);
-        console.log(`💳 Crediti estratti: ${crediti}€`);
-        console.log(`📄 Documento creato: "Squadre/${idSquadra}" con nome="${nomeSquadra}" e crediti=${crediti}`);
-        console.log(`📈 Percentuale successo scadenze: ${Math.round((scadenzeImportate / (scadenzeImportate + scadenzeNull)) * 100)}%`);
-        console.log(`🆔 Percentuale ID trovati: ${Math.round((idTrovati / (idTrovati + idMancanti)) * 100)}%`);
 
-        await setDoc(squadraRef, { 
-          nome: nomeSquadra, // ✅ Nome dalla cella A1
-          valoreRosa: valoreRosaTotale, // ✅ Valore calcolato dalla somma giocatori
-          crediti: crediti, // ✅ Crediti dalla cella C1
-          numeroGiocatori: giocatoriAggiunti
+        // ✅ SALVA I DATI DELLA SQUADRA aggiornati con il valore rosa calcolato
+        await setDoc(squadraRef, {
+          nome: nomeSquadra,
+          crediti: crediti,
+          valoreRosa: valoreRosaTotale
         }, { merge: true });
+
+        console.log('\n📊 RIEPILOGO FOGLIO', sheetName, ':');
+        console.log('🏟️ Squadra:', nomeSquadra, '(ID:', idSquadra, ')');
+        console.log('💰 Crediti:', crediti, '€');
+        console.log('💎 Valore Rosa Totale:', valoreRosaTotale, '€');
+        console.log('👥 Giocatori aggiunti:', giocatoriAggiunti);
+        console.log('🔄 Giocatori aggiornati:', giocatoriAggiornati);
+        console.log('🆕 Giocatori creati:', giocatoriCreati);
+        console.log('📅 Scadenze importate:', scadenzeImportate);
+        console.log('❄️ Contratti congelati:', scadenzeNull);
+        console.log('🆔 ID trovati:', idTrovati);
+        console.log('⚠️ ID mancanti:', idMancanti);
 
         sheetsProcessed++;
         setProgress(Math.round((sheetsProcessed / totalSheets) * 100));
       }
 
-      setMessage('Ripristino rose completato con successo');
+      setMessage('✅ Caricamento completato con successo!');
     } catch (error) {
-      console.error('Errore durante il caricamento dei dati da Excel:', error);
-      setMessage('Errore durante il caricamento dei dati da Excel: ' + error.message);
-    }
-  };
-
-  // Funzione per verificare e correggere ID temporanei dopo l'import
-  const verificaECorreggiIdTemporanei = async () => {
-    try {
-      console.log('🔧 Inizio verifica e correzione ID temporanei...');
-      
-      const giocatoriSnapshot = await getDocs(collection(db, 'Giocatori'));
-      const giocatoriTemporanei = [];
-      
-      giocatoriSnapshot.docs.forEach(doc => {
-        if (doc.id.startsWith('TEMP_')) {
-          giocatoriTemporanei.push({
-            id: doc.id,
-            ...doc.data()
-          });
-        }
-      });
-      
-      if (giocatoriTemporanei.length === 0) {
-        console.log('✅ Nessun ID temporaneo trovato');
-        return;
-      }
-      
-      console.log(`⚠️ Trovati ${giocatoriTemporanei.length} giocatori con ID temporanei:`);
-      giocatoriTemporanei.forEach(g => {
-        console.log(`   - ${g.nome} (ID temporaneo: ${g.id})`);
-      });
-      
-      // Mostra suggerimenti per la correzione manuale
-      setMessage(`⚠️ Trovati ${giocatoriTemporanei.length} giocatori con ID temporanei. Controlla la console per i dettagli.`);
-      
-    } catch (error) {
-      console.error('❌ Errore nella verifica ID temporanei:', error);
-    }
-  };
-
-  // Funzione per ripristinare le statistiche di tutti i giocatori di TUTTE le squadre
-  const ripristinaStatisticheTutteSquadre = async () => {
-    try {
-      setMessage('Ripristino statistiche di tutte le squadre in corso...');
-      console.log('🔄 Inizio ripristino statistiche di tutte le squadre');
-      
-      let totalePlayers = 0;
-      let successPlayers = 0;
-      let errorPlayers = 0;
-      
-      // Ottieni tutte le squadre
-      const squadreSnapshot = await getDocs(collection(db, 'Squadre'));
-      const tutteSquadre = squadreSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log(`📊 Trovate ${tutteSquadre.length} squadre da processare`);
-      
-      for (const squadra of tutteSquadre) {
-        console.log(`\n🏟️ Processando squadra: ${squadra.nome} (ID: ${squadra.id})`);
-        
-        try {
-          // Ottieni tutti i giocatori della squadra corrente
-          const giocatoriRef = collection(db, `Squadre/${squadra.id}/giocatori`);
-          const giocatoriSnapshot = await getDocs(giocatoriRef);
-          const giocatoriSquadra = giocatoriSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          
-          console.log(`👥 Trovati ${giocatoriSquadra.length} giocatori in ${squadra.nome}`);
-          
-          for (const giocatore of giocatoriSquadra) {
-            totalePlayers++;
-            try {
-              const aggiornamenti = {
-                // ✅ Azzera tutte le statistiche di gioco
-                gol: 0,
-                assist: 0,
-                ammonizioni: 0,
-                espulsioni: 0,
-                autogol: 0,
-                presenze: 0,
-                voto: 0,
-                golSubiti: 0,
-                rigoriParati: 0,
-                // ✅ Imposta valore iniziale uguale al valore attuale
-                valoreIniziale: giocatore.valoreAttuale || 0
-                // ⚠️ NON tocchiamo la scadenza!
-              };
-              
-              console.log(`🔄 Ripristinando ${giocatore.nome}: valoreIniziale ${giocatore.valoreIniziale || 0} -> ${giocatore.valoreAttuale || 0}`);
-              
-              // Aggiorna il giocatore nella sottocollezione della squadra
-              const giocatoreSquadraRef = doc(db, `Squadre/${squadra.id}/giocatori`, giocatore.id);
-              await updateDoc(giocatoreSquadraRef, aggiornamenti);
-              
-              // Aggiorna anche il giocatore nella collezione principale
-              const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatore.id);
-              await updateDoc(giocatorePrincipaleRef, aggiornamenti);
-              
-              console.log(`✅ Statistiche ripristinate per ${giocatore.nome} (${squadra.nome})`);
-              successPlayers++;
-              
-            } catch (playerError) {
-              console.error(`❌ Errore ripristino per ${giocatore.nome}:`, playerError);
-              errorPlayers++;
-            }
-          }
-          
-        } catch (teamError) {
-          console.error(`❌ Errore processando squadra ${squadra.nome}:`, teamError);
-        }
-      }
-      
-      console.log(`\n📊 RIEPILOGO RIPRISTINO GLOBALE:`);
-      console.log(`👥 Totale giocatori processati: ${totalePlayers}`);
-      console.log(`✅ Successi: ${successPlayers}`);
-      console.log(`❌ Errori: ${errorPlayers}`);
-      console.log(`📈 Percentuale successo: ${Math.round((successPlayers / totalePlayers) * 100)}%`);
-      console.log(`🔄 Operazioni eseguite:`);
-      console.log(`   📊 Statistiche azzerate: gol, assist, ammonizioni, espulsioni, autogol, presenze, voto, golSubiti, rigoriParati`);
-      console.log(`   💰 Valore iniziale = valore attuale per tutti i giocatori`);
-      console.log(`   📅 Scadenze: NON MODIFICATE`);
-      
-      setMessage(`Ripristino globale completato! ✅ ${successPlayers} giocatori ripristinati su ${totalePlayers} totali. Statistiche azzerate e valori iniziali aggiornati.`);
-      
-    } catch (error) {
-      console.error('❌ Errore generale nel ripristino statistiche:', error);
-      setMessage('Errore nel ripristino delle statistiche: ' + error.message);
+      console.error('❌ Errore durante il caricamento:', error);
+      setMessage('❌ Errore durante il caricamento: ' + error.message);
     }
   };
 
   return (
     <div className="container mt-5">
-      <div className="row justify-content-center">
-        <div className="col-md-8">
-          <div className="card">
-            <div className="card-body">
-              <h2 className="card-title text-center mb-4">Ripristino Rose Squadre</h2>
-            
-              
-              <div className="mb-3">
-                <label className="form-label">Seleziona il file Excel delle squadre:</label>
-                <input type="file" className="form-control" onChange={handleFileChange} accept=".xlsx, .xls" />
-              </div>
-              
-              <button onClick={handleUpload} className="btn btn-primary w-100 mb-3">
-                Importa Rose
-              </button>
-              
-        
-            
-              
-              {message && (
-                <div className="alert alert-info text-center mb-3">
-                  {message}
-                  {message.includes('successo') && (
-                    <div className="mt-2">
-                      <small>✅ Controlla la console per i dettagli sui collegamenti automatici</small>
-                    </div>
-                  )}
-                </div>
-              )}
+      <h2>📊 Ripristino Rose Squadre da Excel</h2>
+      
+      <div className="mb-3">
+        <label className="form-label">Seleziona file Excel (.xlsx/.xls):</label>
+        <input
+          type="file"
+          className="form-control"
+          accept=".xlsx,.xls"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      <button
+        onClick={handleUpload}
+        className="btn btn-primary"
+        disabled={!file}
+      >
+        🚀 Carica e Ripristina Rose
+      </button>
+
+      {progress > 0 && (
+        <div className="mt-3">
+          <div className="progress">
+            <div
+              className="progress-bar"
+              role="progressbar"
+              style={{ width: `${progress}%` }}
+              aria-valuenow={progress}
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              {progress}%
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {message && (
+        <div className={`alert mt-3 ${message.includes('✅') ? 'alert-success' : message.includes('❌') ? 'alert-danger' : 'alert-info'}`}>
+          {message}
+        </div>
+      )}
     </div>
   );
 }
