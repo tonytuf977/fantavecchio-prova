@@ -500,7 +500,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
 
   // Funzione per ripristinare le statistiche di tutti i giocatori di TUTTE le squadre
   const ripristinaStatistiche = async () => {
-    if (!window.confirm('⚠️ ATTENZIONE: Questa operazione ripristinerà le statistiche di TUTTI i giocatori di TUTTE le squadre!\n\n✅ Cosa farà:\n- Azzererà tutte le statistiche (gol, assist, presenze, ammonizioni, ecc.)\n- Imposterà valore attuale = valore iniziale per tutti i giocatori\n- NON toccherà le scadenze\n\nSei sicuro di voler continuare? Questa azione non può essere annullata.')) {
+    if (!window.confirm('⚠️ ATTENZIONE: Questa operazione ripristinerà le statistiche di TUTTI i giocatori di TUTTE le squadre!\n\n✅ Cosa farà:\n- Azzererà tutte le statistiche (gol, assist, presenze, ammonizioni, ecc.)\n- Imposterà valore iniziale = valore attuale per tutti i giocatori\n- NON toccherà le scadenze\n\nSei sicuro di voler continuare? Questa azione non può essere annullata.')) {
       return;
     }
 
@@ -542,7 +542,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
                 voto: 0,
                 golSubiti: 0,
                 rigoriParati: 0,
-                valoreAttuale: giocatore.valoreIniziale || giocatore.valoreAttuale || 0
+                valoreIniziale: giocatore.valoreAttuale || giocatore.valoreIniziale || 0
               };
               
               // ✅ Aggiorna nella collezione generale Giocatori
@@ -575,10 +575,10 @@ const handleApplyFilter = (giocatoreId, filter) => {
       console.log(`📈 Percentuale successo: ${Math.round((successPlayers / totalePlayers) * 100)}%`);
       console.log(`🔄 Operazioni eseguite:`);
       console.log(`   📊 Statistiche azzerate: gol, assist, ammonizioni, espulsioni, autogol, presenze, voto, golSubiti, rigoriParati`);
-      console.log(`   💰 Valore iniziale = valore attuale per tutti i giocatori`);
+      console.log(`   💰 Valore attuale = valore iniziale per tutti i giocatori`);
       console.log(`   📅 Scadenze: NON MODIFICATE`);
       
-      alert(`🎉 Ripristino globale completato!\n\n📊 Risultati:\n✅ ${successPlayers} giocatori ripristinati con successo\n❌ ${errorPlayers} errori\n👥 ${totalePlayers} giocatori totali processati\n\n🔄 Tutte le statistiche sono state azzerate e i valori attuali sono stati sincronizzati con quelli iniziali.\nLe scadenze sono rimaste invariate.`);
+      alert(`🎉 Ripristino globale completato!\n\n📊 Risultati:\n✅ ${successPlayers} giocatori ripristinati con successo\n❌ ${errorPlayers} errori\n👥 ${totalePlayers} giocatori totali processati\n\n🔄 Tutte le statistiche sono state azzerate e i valori iniziali sono stati sincronizzati con quelli attuali.\nLe scadenze sono rimaste invariate.`);
       
       // Se c'è una squadra selezionata, ricarica i suoi dati
       if (selectedSquadra) {
@@ -851,20 +851,24 @@ const handleApplyFilter = (giocatoreId, filter) => {
           continue;
         }
 
-        // Aggiungi alla sottocollection listaGiovani usando l'ID come documento
+        // ✅ RIMUOVI dalla lista giocatori principali (dalla sottocollection)
+        const giocatoreRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
+        await deleteDoc(giocatoreRef);
+
+        // ✅ AGGIUNGI alla lista giovani SENZA MODIFICARE NESSUN CAMPO
         const listaGiovaniRef = doc(db, `Squadre/${selectedSquadra.id}/listaGiovani`, giocatoreId);
         await setDoc(listaGiovaniRef, {
-          ...giocatore,
-          isGiovane: true,
-          dataInserimentoGiovani: new Date().toISOString().split('T')[0]
+          ...giocatore, // ✅ Mantieni tutti i dati originali
+          // NON aggiungo isGiovane o dataInserimentoGiovani per non modificare i dati originali
         });
 
-        // Aggiorna lo stato locale
-        setListaGiovani(prev => [...prev, {
-          ...giocatore,
-          isGiovane: true,
-          dataInserimentoGiovani: new Date().toISOString().split('T')[0]
-        }]);
+        // ✅ AGGIORNA anche nella collezione principale Giocatori per mantenere coerenza
+        const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatoreId);
+        await setDoc(giocatorePrincipaleRef, giocatore, { merge: true });
+
+        // ✅ Aggiorna gli stati locali - SPOSTA il giocatore (non duplicare)
+        setGiocatori(prev => prev.filter(g => g.id !== giocatoreId)); // Rimuovi dalla lista principale
+        setListaGiovani(prev => [...prev, giocatore]); // Aggiungi alla lista giovani
 
         aggiunti++;
       }
@@ -873,18 +877,18 @@ const handleApplyFilter = (giocatoreId, filter) => {
       
       let messaggio = "";
       if (aggiunti > 0) {
-        messaggio += `${aggiunti} giocatore${aggiunti > 1 ? 'i' : ''} aggiunt${aggiunti > 1 ? 'i' : 'o'} alla lista giovani con successo!`;
+        messaggio += `${aggiunti} giocatore${aggiunti > 1 ? 'i' : ''} spostat${aggiunti > 1 ? 'i' : 'o'} alla lista giovani con successo!`;
       }
       if (giaSalvati > 0) {
         if (messaggio) messaggio += " ";
         messaggio += `${giaSalvati} giocatore${giaSalvati > 1 ? 'i' : ''} era${giaSalvati > 1 ? 'no' : ''} già present${giaSalvati > 1 ? 'i' : 'e'} nella lista.`;
       }
       
-      alert(messaggio || "Nessun giocatore è stato aggiunto.");
+      alert(messaggio || "Nessun giocatore è stato spostato.");
 
     } catch (err) {
-      console.error("Errore nell'aggiunta dei giocatori alla lista giovani:", err);
-      alert(`Errore nell'aggiunta dei giocatori alla lista giovani: ${err.message}`);
+      console.error("Errore nello spostamento dei giocatori alla lista giovani:", err);
+      alert(`Errore nello spostamento dei giocatori alla lista giovani: ${err.message}`);
     }
   };
 
@@ -894,17 +898,39 @@ const handleApplyFilter = (giocatoreId, filter) => {
       return;
     }
 
-    const confirmDelete = window.confirm("Sei sicuro di voler rimuovere questo giocatore dalla lista giovani?");
-    if (confirmDelete) {
+    const confirmMove = window.confirm("Vuoi spostare questo giocatore dalla lista giovani alla lista giocatori principali?");
+    if (confirmMove) {
       try {
+        // Trova il giocatore nella lista giovani
+        const giocatore = listaGiovani.find(g => g.id === giocatoreId);
+        if (!giocatore) {
+          alert("Giocatore non trovato nella lista giovani");
+          return;
+        }
+
+        // ✅ RIMUOVI dalla lista giovani
         const listaGiovaniRef = doc(db, `Squadre/${selectedSquadra.id}/listaGiovani`, giocatoreId);
         await deleteDoc(listaGiovaniRef);
 
-        setListaGiovani(prev => prev.filter(giocatore => giocatore.id !== giocatoreId));
-        alert("Giocatore rimosso dalla lista giovani con successo!");
+        // ✅ PREPARA I DATI PULITI (rimuovi campi problematici senza impostare undefined)
+        const { isGiovane, dataInserimentoGiovani, ...giocatorePulito } = giocatore;
+
+        // ✅ AGGIUNGI alla lista giocatori principali con dati puliti
+        const giocatoreRef = doc(db, `Squadre/${selectedSquadra.id}/giocatori`, giocatoreId);
+        await setDoc(giocatoreRef, giocatorePulito);
+
+        // ✅ AGGIORNA anche nella collezione principale Giocatori per mantenere coerenza
+        const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatoreId);
+        await setDoc(giocatorePrincipaleRef, giocatorePulito, { merge: true });
+
+        // ✅ Aggiorna gli stati locali - SPOSTA il giocatore
+        setListaGiovani(prev => prev.filter(g => g.id !== giocatoreId)); // Rimuovi dalla lista giovani
+        setGiocatori(prev => [...prev, giocatorePulito]); // Aggiungi alla lista principale
+
+        alert("Giocatore spostato dalla lista giovani alla lista principale con successo!");
       } catch (err) {
-        console.error("Errore nella rimozione del giocatore dalla lista giovani:", err);
-        alert(`Errore nella rimozione del giocatore dalla lista giovani: ${err.message}`);
+        console.error("Errore nello spostamento del giocatore:", err);
+        alert(`Errore nello spostamento del giocatore: ${err.message}`);
       }
     }
   };
@@ -981,9 +1007,9 @@ const handleApplyFilter = (giocatoreId, filter) => {
               <button
                 className="btn btn-warning me-2 mb-2"
                 onClick={ripristinaStatistiche}
-                title="⚠️ ATTENZIONE: Ripristina statistiche di TUTTI i giocatori di TUTTE le squadre! Azzera tutte le statistiche e sincronizza valore attuale = valore iniziale"
+                title="⚠️ ATTENZIONE: Ripristina statistiche di TUTTI i giocatori di TUTTE le squadre! Azzera tutte le statistiche e sincronizza valore iniziale = valore attuale"
               >
-                🌍 Ripristina Statistiche Globali
+                🌍 Ripristina Statistiche
               </button>
             </div>
           )}
@@ -1227,7 +1253,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
                       onClick={handleAggiungiGiovane}
                       disabled={giocatoriSelezionatiGiovani.length === 0}
                     >
-                      Aggiungi alla Lista Giovani
+                      Sposta alla Lista Giovani
                       {giocatoriSelezionatiGiovani.length > 0 && (
                         <span className="badge bg-light text-dark ms-2">
                           {giocatoriSelezionatiGiovani.length}
@@ -1268,7 +1294,15 @@ const handleApplyFilter = (giocatoreId, filter) => {
                       <td>{giocatore.presenze}</td>
                       <td>{giocatore.valoreIniziale}</td>
                       <td>{giocatore.valoreAttuale}</td>
-                      <td>{giocatore.scadenza || 'N/A'}</td>
+                      <td>
+                        {!giocatore.squadraSerieA || giocatore.squadraSerieA === null || giocatore.squadraSerieA === '' ? (
+                          <span className="text-muted">❄️ Congelato</span>
+                        ) : (
+                          <span className={getScadenzaClass(giocatore.scadenza, giocatore.squadraSerieA)}>
+                            {giocatore.scadenza || 'N/A'}
+                          </span>
+                        )}
+                      </td>
                       <td>{giocatore.ammonizioni}</td>
                       <td>{giocatore.assist}</td>
                       <td>{giocatore.autogol}</td>
@@ -1278,10 +1312,10 @@ const handleApplyFilter = (giocatoreId, filter) => {
                       {isAdmin && (
                         <td>
                           <button
-                            className="btn btn-danger btn-sm"
+                            className="btn btn-warning btn-sm"
                             onClick={() => handleRimuoviGiovane(giocatore.id)}
                           >
-                            Rimuovi da Lista Giovani
+                            Sposta alla Lista Principale
                           </button>
                         </td>
                       )}
