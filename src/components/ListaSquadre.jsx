@@ -741,12 +741,12 @@ const handleApplyFilter = (giocatoreId, filter) => {
       // Genera il nome file con timestamp
       const now = new Date();
       const timestamp = now.toISOString().split('T')[0];
-      const fileName = `FantaVecchio_TutteSquadre_${timestamp}.xlsx`;
+      const fileName = `FantaVecchio_Squadre_${timestamp}.xlsx`;
 
       // Scarica il file
       XLSX.writeFile(workbook, fileName);
       
-      alert(`✅ Export completato! File salvato: ${fileName}\n📊 Riepilogo:\n🏟️ Squadre esportate: ${squadreEsportate}\n👥 Giocatori totali: ${totalGiocatoriEsportati}\n📄 Formato: Un foglio per squadra con campo "Tipo" in colonna E`);
+      alert(`✅ Export completato! File salvato: ${fileName}\n📊 Riepilogo:\n🏟️ Squadre esportate: ${squadreEsportate} `);
       
     } catch (error) {
       console.error('Errore durante l\'export:', error);

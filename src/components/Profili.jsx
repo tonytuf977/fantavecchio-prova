@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useUtenti } from '../hook/useUtenti';
 import { useSquadre } from '../hook/useSquadre';
 import { useGiocatori } from '../hook/useGiocatori';
@@ -32,32 +32,7 @@ function Profilo() {
   const [confermaPassword, setConfermaPassword] = useState('');
   const [loadingAggiornamento, setLoadingAggiornamento] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async user => {
-      if (user && !loadingUtenti && !loadingSquadre) {
-        const utente = utenti.find(u => u.id === user.uid);
-        setUtenteCorrente(utente);
-        if (utente && utente.idSquadra) {
-          const squadra = squadre.find(s => s.id === utente.idSquadra);
-          setSquadraUtente(squadra);
-          await fetchRichiesteScambio(utente.idSquadra);
-          await fetchStoricoScambi(utente.idSquadra);
-        } else {
-          setSquadraUtente(null);
-        }
-      } else {
-        setUtenteCorrente(null);
-        setSquadraUtente(null);
-      }
-    });
-    return () => unsubscribe();
-  }, [utenti, squadre, loadingUtenti, loadingSquadre]);
-
-  useEffect(() => {
-    updateNotificheCount();
-  }, [richiesteScambio]);
-
-  const fetchRichiesteScambio = async (squadraId) => {
+  const fetchRichiesteScambio = useCallback(async (squadraId) => {
     try {
       const richiesteRef = collection(db, 'RichiesteScambio');
       const q = query(
@@ -146,34 +121,115 @@ function Profilo() {
       console.error('Errore nel caricamento delle richieste di scambio:', error);
       setRichiesteScambio([]);
     }
-  };  const fetchStoricoScambi = async (squadraId) => {
+  }, []);
+
+  const fetchStoricoScambi = useCallback(async (squadraId) => {
     try {
       const scambiRef = collection(db, 'RichiesteScambio');
       const scambiSnap = await getDocs(scambiRef);
-      const scambiList = scambiSnap.docs
-        .map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            dataScambio: data.dataScambio || 'Data non disponibile',
-            dataRichiesta: data.dataRichiesta || 'Data non disponibile'
+      
+      // ✅ PROCESSA I DATI COME NELLO STORICO GENERALE
+      const storicoProcessato = await Promise.all(scambiSnap.docs.map(async (docSnapshot) => {
+        const scambio = docSnapshot.data();
+        
+        // Filtra solo gli scambi che coinvolgono la squadra corrente
+        if (scambio.squadraRichiedente !== squadraId && scambio.squadraAvversaria !== squadraId) {
+          return null;
+        }
+
+        try {
+          // Trova nomi squadre
+          const squadraRichiedenteNome = squadre.find(s => s.id === scambio.squadraRichiedente)?.nome || scambio.squadraRichiedente;
+          const squadraAvversariaNome = squadre.find(s => s.id === scambio.squadraAvversaria)?.nome || scambio.squadraAvversaria;
+
+          let scambioProcessato = {
+            ...scambio,
+            id: docSnapshot.id,
+            dataScambio: scambio.dataScambio || 'Data non disponibile',
+            dataRichiesta: scambio.dataRichiesta || 'Data non disponibile',
+            squadraRichiedenteNome,
+            squadraAvversariaNome
           };
-        })
-        .filter(scambio =>
-          scambio.squadraRichiedente === squadraId ||
-          scambio.squadraAvversaria === squadraId
-        );
-      scambiList.sort((a, b) => new Date(b.dataScambio) - new Date(a.dataScambio));
-      setStoricoScambi(scambiList);
+
+          if (scambio.tipoScambio === 'crediti') {
+            // Gestione scambio crediti: trova nome giocatore richiesto
+            const giocatoreRichiesto = giocatori.find(g => g.id === scambio.giocatoreRichiesto);
+            scambioProcessato.giocatoreRichiestoDettagli = giocatoreRichiesto || { 
+              id: scambio.giocatoreRichiesto, 
+              nome: 'Giocatore non trovato',
+              valoreAttuale: 0 
+            };
+          } else {
+            // Gestione scambio giocatori: trova nomi giocatori offerti e richiesti
+            const giocatoriOffertiDettagli = (scambio.giocatoriOfferti || []).map(id => {
+              const giocatore = giocatori.find(g => g.id === id);
+              return giocatore || { id, nome: id, valoreAttuale: 0 }; // Fallback con ID se non trovato
+            });
+
+            const giocatoriRichiestiDettagli = (scambio.giocatoriRichiesti || []).map(id => {
+              const giocatore = giocatori.find(g => g.id === id);
+              return giocatore || { id, nome: id, valoreAttuale: 0 }; // Fallback con ID se non trovato
+            });
+
+            scambioProcessato.giocatoriOffertiDettagli = giocatoriOffertiDettagli;
+            scambioProcessato.giocatoriRichiestiDettagli = giocatoriRichiestiDettagli;
+          }
+
+          return scambioProcessato;
+        } catch (error) {
+          console.error('Errore nel processare scambio:', docSnapshot.id, error);
+          return null; // Ritorna null in caso di errore
+        }
+      }));
+
+      // Filtra i risultati null e ordina per data
+      const scambiValidi = storicoProcessato.filter(s => s !== null);
+      scambiValidi.sort((a, b) => {
+        const dataA = a.dataScambio || a.dataRichiesta;
+        const dataB = b.dataScambio || b.dataRichiesta;
+        
+        if (!dataA && !dataB) return 0;
+        if (!dataA) return 1;
+        if (!dataB) return -1;
+        
+        return new Date(dataB).getTime() - new Date(dataA).getTime();
+      });
+      
+      setStoricoScambi(scambiValidi);
     } catch (error) {
       console.error('Errore nel recupero dello storico scambi:', error);
+      setStoricoScambi([]);
     }
-  };
+  }, [squadre, giocatori]);
 
-  const updateNotificheCount = () => {
+  const updateNotificheCount = useCallback(() => {
     setNotificheCount(richiesteScambio.length);
-  };
+  }, [richiesteScambio]);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async user => {
+      if (user && !loadingUtenti && !loadingSquadre) {
+        const utente = utenti.find(u => u.id === user.uid);
+        setUtenteCorrente(utente);
+        if (utente && utente.idSquadra) {
+          const squadra = squadre.find(s => s.id === utente.idSquadra);
+          setSquadraUtente(squadra);
+          await fetchRichiesteScambio(utente.idSquadra);
+          await fetchStoricoScambi(utente.idSquadra);
+        } else {
+          setSquadraUtente(null);
+        }
+      } else {
+        setUtenteCorrente(null);
+        setSquadraUtente(null);
+      }
+    });
+    return () => unsubscribe();
+  }, [utenti, squadre, loadingUtenti, loadingSquadre, giocatori, fetchRichiesteScambio, fetchStoricoScambi]);
+
+  useEffect(() => {
+    updateNotificheCount();
+  }, [richiesteScambio, updateNotificheCount]);
 
   const aggiornaSquadraGiocatore = async (giocatoreId, daSquadraId, aSquadraId) => {
     try {
@@ -310,13 +366,32 @@ function Profilo() {
   };
 
   const creaRichiestaRinnovo = async (squadraId, giocatori) => {
-    const rinnovoRef = collection(db, 'RinnoviContratti');
-    await setDoc(doc(rinnovoRef), {
-      squadraId: squadraId,
-      giocatori: giocatori.map(g => g.id),
-      stato: 'In attesa',
-      dataCreazione: new Date().toISOString().split('T')[0]
-    });
+    try {
+      console.log(`🔄 Creazione richiesta rinnovo per squadra ${squadraId}:`, giocatori);
+      
+      // Verifica che i giocatori abbiano un ID valido
+      const giocatoriValidi = giocatori.filter(g => g.id);
+      
+      if (giocatoriValidi.length === 0) {
+        console.warn('Nessun giocatore valido per la creazione del rinnovo');
+        return;
+      }
+      
+      // Crea una nuova richiesta di rinnovo con un ID unico
+      const rinnovoRef = doc(collection(db, 'RinnoviContratti'));
+      await setDoc(rinnovoRef, {
+        squadraId: squadraId,
+        giocatori: giocatoriValidi.map(g => g.id), // ✅ Usa solo gli ID dei giocatori
+        stato: 'In attesa',
+        dataCreazione: new Date().toISOString().split('T')[0],
+        tipo: 'post-scambio' // Identificativo per distinguere dai rinnovi manuali
+      });
+      
+      console.log(`✅ Richiesta rinnovo creata con successo per squadra ${squadraId} con ${giocatoriValidi.length} giocatori`);
+    } catch (error) {
+      console.error('Errore nella creazione della richiesta di rinnovo:', error);
+      throw error;
+    }
   };
 
   const handleAccettaScambio = async (richiesta) => {
@@ -380,6 +455,36 @@ function Profilo() {
         accettataAvversario: true,
         dataScambio: new Date().toISOString().split('T')[0]
       });
+
+      // ✅ CREA RICHIESTE DI RINNOVO PER ENTRAMBE LE SQUADRE
+      if (richiesta.tipoScambio === 'crediti') {
+        // Per scambio crediti: solo la squadra richiedente riceve il giocatore e deve rinnovarlo
+        const giocatoreRicevuto = richiesta.giocatoreRichiestoDettagli;
+        if (giocatoreRicevuto && giocatoreRicevuto.id) {
+          console.log(`🔄 Creazione rinnovo per squadra richiedente: ${richiesta.squadraRichiedente} - Giocatore: ${giocatoreRicevuto.nome} (ID: ${giocatoreRicevuto.id})`);
+          await creaRichiestaRinnovo(richiesta.squadraRichiedente, [giocatoreRicevuto]);
+        }
+      } else {
+        // Per scambio giocatori: entrambe le squadre ricevono giocatori e devono rinnovarli
+        
+        // Rinnovi per la squadra richiedente (riceve i giocatori richiesti)
+        if (richiesta.giocatoriRichiesti && richiesta.giocatoriRichiesti.length > 0) {
+          const giocatoriRichiestiConId = richiesta.giocatoriRichiesti.filter(g => g.id);
+          if (giocatoriRichiestiConId.length > 0) {
+            console.log(`🔄 Creazione rinnovi per squadra richiedente: ${richiesta.squadraRichiedente} - ${giocatoriRichiestiConId.length} giocatori`);
+            await creaRichiestaRinnovo(richiesta.squadraRichiedente, giocatoriRichiestiConId);
+          }
+        }
+        
+        // Rinnovi per la squadra avversaria (riceve i giocatori offerti)  
+        if (richiesta.giocatoriOfferti && richiesta.giocatoriOfferti.length > 0) {
+          const giocatoriOffertiConId = richiesta.giocatoriOfferti.filter(g => g.id);
+          if (giocatoriOffertiConId.length > 0) {
+            console.log(`🔄 Creazione rinnovi per squadra avversaria: ${richiesta.squadraAvversaria} - ${giocatoriOffertiConId.length} giocatori`);
+            await creaRichiestaRinnovo(richiesta.squadraAvversaria, giocatoriOffertiConId);
+          }
+        }
+      }
 
       setModalMessage('Scambio accettato e completato! Controlla i giocatori da rinnovare.');
       setShowModal(true);
@@ -967,48 +1072,85 @@ function Profilo() {
         storicoScambi.map((scambio, index) => (
           <div key={index} className="card mb-3">
             <div className="card-body">
-              <h5 className="card-title">Data Proposta: {new Date(scambio.dataRichiesta).toLocaleDateString()}</h5>
-              <p>Squadra Richiedente: {scambio.squadraRichiedente}</p>
-              <p>Squadra Avversaria: {scambio.squadraAvversaria}</p>
-              <div>
-                <strong>Giocatori Offerti:</strong>
-                <ul>
-                  {Array.isArray(scambio.giocatoriOfferti) && scambio.giocatoriOfferti.length > 0 ? (
-                    scambio.giocatoriOfferti.map((giocatore, idx) => (
-                      <li key={idx}>{giocatore}</li>
-                    ))
-                  ) : (
-                    <li>Nessun giocatore offerto</li>
-                  )}
-                </ul>
+              <div className="d-flex justify-content-between align-items-start mb-2">
+                <h5 className="card-title">
+                  Data Proposta:{' '}
+                  {scambio.dataRichiesta
+                    ? new Date(scambio.dataRichiesta).toLocaleDateString()
+                    : 'Data non disponibile'}
+                  {' - '}
+                  {scambio.tipoScambio === 'crediti' ? 'Offerta Crediti' : 'Scambio Giocatori'}
+                  
+                  {/* Badge stato scambio */}
+                  <span className={`badge ms-2 ${
+                    scambio.stato === 'Completato' ? 'bg-success' :
+                    scambio.stato === 'Rifiutata' || scambio.stato === 'Rifiutato' ? 'bg-danger' :
+                    scambio.stato === 'Approvata da admin' ? 'bg-warning text-dark' : 'bg-secondary'
+                  }`}>
+                    {scambio.stato === 'Completato' ? '✅ Completato' :
+                     scambio.stato === 'Rifiutata' || scambio.stato === 'Rifiutato' ? '❌ Rifiutato' :
+                     scambio.stato === 'Approvata da admin' ? '⏳ In Attesa' : scambio.stato || 'N/A'}
+                  </span>
+                </h5>
               </div>
-              <div>
-                <strong>Giocatori Richiesti:</strong>
-                <ul>
-                  {Array.isArray(scambio.giocatoriRichiesti) && scambio.giocatoriRichiesti.length > 0 ? (
-                    scambio.giocatoriRichiesti.map((giocatore, idx) => (
-                      <li key={idx}>{giocatore}</li>
-                    ))
-                  ) : (
-                    <li>Nessun giocatore richiesto</li>
-                  )}
-                </ul>
-              </div>
-              <p>Stato: {scambio.stato}</p>
-              {scambio.stato === 'Completato' && (
-                <p>Data Scambio: {new Date(scambio.dataScambio).toLocaleDateString()}</p>
-              )}
-              {scambio.clausola && <p><strong>Clausola:</strong> {scambio.clausola}</p>}
-              {scambio.valoriGiocatori && (
+              <p><strong>Squadra Richiedente:</strong> {scambio.squadraRichiedenteNome || scambio.squadraRichiedente}</p>
+              <p><strong>Squadra Avversaria:</strong> {scambio.squadraAvversariaNome || scambio.squadraAvversaria}</p>
+              
+              {scambio.tipoScambio === 'crediti' ? (
                 <div>
-                  <strong>Valori Giocatori:</strong>
+                  <strong>Giocatore Richiesto:</strong>
                   <ul>
-                    {Object.entries(scambio.valoriGiocatori).map(([giocatoreId, valore]) => (
-                      <li key={giocatoreId}>{giocatoreId}: {valore} €</li>
-                    ))}
+                    <li>{scambio.giocatoreRichiestoDettagli?.nome || 'Nome non disponibile'} 
+                        (Valore: {scambio.giocatoreRichiestoDettagli?.valoreAttuale || 'N/A'}€)
+                    </li>
                   </ul>
+                  <strong>Crediti Offerti:</strong> {scambio.creditiOfferti || 0}€
+                </div>
+              ) : (
+                <div>
+                  <div>
+                    <strong>Giocatori Offerti:</strong>
+                    <ul>
+                      {(scambio.giocatoriOffertiDettagli && scambio.giocatoriOffertiDettagli.length > 0) ? (
+                        scambio.giocatoriOffertiDettagli.map((giocatore, idx) => (
+                          <li key={idx}>
+                            {giocatore.nome} (Valore: {giocatore.valoreAttuale || 'N/A'}€)
+                          </li>
+                        ))
+                      ) : (
+                        <li>Nessun giocatore offerto</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div>
+                    <strong>Giocatori Richiesti:</strong>
+                    <ul>
+                      {(scambio.giocatoriRichiestiDettagli && scambio.giocatoriRichiestiDettagli.length > 0) ? (
+                        scambio.giocatoriRichiestiDettagli.map((giocatore, idx) => (
+                          <li key={idx}>
+                            {giocatore.nome} (Valore: {giocatore.valoreAttuale || 'N/A'}€)
+                          </li>
+                        ))
+                      ) : (
+                        <li>Nessun giocatore richiesto</li>
+                      )}
+                    </ul>
+                  </div>
+                  {scambio.creditiOfferti && scambio.creditiOfferti > 0 && (
+                    <div><strong>💰 Crediti Aggiuntivi Offerti:</strong> <span style={{color: 'green', fontWeight: 'bold'}}>{scambio.creditiOfferti}€</span></div>
+                  )}
                 </div>
               )}
+              <p><strong>Stato:</strong> {scambio.stato || 'N/A'}</p>
+              {scambio.stato === 'Completato' && (
+                <p>
+                  <strong>Data Scambio:</strong>{' '}
+                  {scambio.dataScambio && scambio.dataScambio !== 'Data non disponibile'
+                    ? new Date(scambio.dataScambio).toLocaleDateString()
+                    : 'Data non disponibile'}
+                </p>
+              )}
+              {scambio.clausola && <p><strong>Clausola:</strong> {scambio.clausola}</p>}
             </div>
           </div>
         ))
