@@ -149,7 +149,10 @@ function ImportExcel() {
       );
       
       setMessage(' Scaricamento Excel da Fantacalcio.it...');
-      const response = await fetch('http://localhost:3001/api/giocatori');
+      
+      // Usa localhost in sviluppo, URL di produzione quando deployato
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/api/giocatori`);
       
       if (!response.ok) {
         throw new Error(`Errore nel download: ${response.status} ${response.statusText}`);

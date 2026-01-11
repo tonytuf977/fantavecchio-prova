@@ -88,8 +88,7 @@ function RichiestaScambio() {
           if (finestraData.dataChiusura) setDataChiusura(finestraData.dataChiusura);
           if (finestraData.oraChiusura) setOraChiusura(finestraData.oraChiusura);
           
-          // NON controllare toggle automatici al mount, solo aggiorna lo stato UI
-          // I toggle automatici saranno gestiti solo dal controllo periodico
+          // Aggiorna solo lo stato UI - Il controllo automatico è gestito dal server
           setFinestraScambiAperta(finestraData.aperta);
         } else {
           // If the document doesn't exist, create it with a default value
@@ -102,52 +101,8 @@ function RichiestaScambio() {
     }
   }, [squadre, utenti]);
 
-  // Funzione per controllare se è il momento di aprire/chiudere automaticamente
-  // NOTA: Questa funzione viene chiamata SOLO dal controllo periodico useEffect
-  // NON invia MAI email, aggiorna solo lo stato nel database
-  const checkAutomaticToggle = async (finestraData) => {
-    const now = new Date();
-    const currentDateTime = now.getTime();
-    
-    // Controlla prima la chiusura, poi l'apertura
-    if (finestraData.dataChiusura && finestraData.oraChiusura) {
-      const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
-      if (currentDateTime >= chiusuraDateTime && finestraData.aperta) {
-        console.log('⏰ Attivazione chiusura automatica programmata (SENZA EMAIL)');
-        // skipEmail=true: NON inviare email nei toggle automatici
-        await toggleFinestraScambi(false, true, true);
-        return;
-      }
-    }
-    
-    // Controlla l'apertura solo se siamo nello stesso giorno dell'apertura programmata
-    // e l'orario attuale è tra apertura e chiusura
-    if (finestraData.dataApertura && finestraData.oraApertura) {
-      const aperturaDateTime = new Date(`${finestraData.dataApertura}T${finestraData.oraApertura}`).getTime();
-      
-      // Verifica se siamo nel giorno dell'apertura
-      const aperturaDate = new Date(finestraData.dataApertura);
-      const currentDate = new Date();
-      const isSameDay = aperturaDate.toDateString() === currentDate.toDateString();
-      
-      // Solo se siamo nello stesso giorno e l'orario è arrivato
-      if (isSameDay && currentDateTime >= aperturaDateTime && !finestraData.aperta) {
-        // Verifica che non sia già passato l'orario di chiusura dello stesso giorno
-        if (finestraData.dataChiusura && finestraData.oraChiusura) {
-          const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
-          // Se l'orario di chiusura è già passato, non aprire
-          if (currentDateTime >= chiusuraDateTime) {
-            return;
-          }
-        }
-        
-        console.log('⏰ Attivazione apertura automatica programmata (SENZA EMAIL)');
-        // skipEmail=true: NON inviare email nei toggle automatici
-        await toggleFinestraScambi(true, true, true);
-        return;
-      }
-    }
-  };
+  // NOTA: Il controllo automatico degli orari è gestito dal SERVER (Render + UptimeRobot)
+  // Questo componente si limita a visualizzare lo stato e permettere il toggle manuale all'admin
 
   useEffect(() => {
     fetchSquadraUtente();
@@ -678,40 +633,6 @@ Buona fortuna a tutti! 🍀
       });
     }
   };
-
-  // Controllo periodico per apertura/chiusura automatica
-  // ATTENZIONE: Questo sistema client-side ha limiti perché funziona solo quando
-  // qualcuno ha il componente aperto. Per una soluzione completa, servono Cloud Functions.
-  useEffect(() => {
-    if (!isAdmin) return;
-    
-    console.log('🔄 Avviato controllo periodico finestra scambi (ogni minuto)');
-    
-    const intervalId = setInterval(async () => {
-      try {
-        const finestraScambiDoc = await getDocs(query(collection(db, 'Impostazioni'), where('nome', '==', 'finestraScambi')));
-        if (!finestraScambiDoc.empty) {
-          const finestraData = finestraScambiDoc.docs[0].data();
-          
-          // Chiama checkAutomaticToggle che gestisce l'invio email
-          await checkAutomaticToggle(finestraData);
-          
-          // Sincronizza lo stato UI se è cambiato senza nostro intervento
-          if (finestraData.aperta !== finestraScambiAperta) {
-            console.log('📊 Sincronizzazione stato UI con database');
-            setFinestraScambiAperta(finestraData.aperta);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Errore nel controllo automatico della finestra scambi:', error);
-      }
-    }, 60000); // Controlla ogni minuto
-    
-    return () => {
-      console.log('🛑 Fermato controllo periodico finestra scambi');
-      clearInterval(intervalId);
-    };
-  }, [isAdmin, finestraScambiAperta]);
 
   if (loadingGiocatori) {
     return <div>Caricamento giocatori...</div>;
