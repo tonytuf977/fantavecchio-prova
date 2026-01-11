@@ -30,3 +30,52 @@
   .log-entry:nth-child(even) {
     background-color: #e9ecef;
   }
+
+/* Mobile Responsive */
+@media (max-width: 767px) {
+  .ripristino-container {
+    padding: 10px !important;
+  }
+
+  .card {
+    margin: 10px 0;
+    border-radius: 8px;
+  }
+
+  .card-body {
+    padding: 15px !important;
+  }
+
+  .card-title {
+    font-size: 1.1rem !important;
+  }
+
+  .btn {
+    width: 100% !important;
+    padding: 12px !important;
+    font-size: 1rem !important;
+    margin-bottom: 10px;
+  }
+
+  .log-container {
+    max-height: 200px;
+    font-size: 0.85rem;
+    padding: 8px;
+  }
+
+  .log-entry {
+    font-size: 0.8rem;
+    padding: 8px;
+  }
+
+  .form-control,
+  .form-select {
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+
+  .alert {
+    font-size: 0.9rem;
+    padding: 12px;
+  }
+}

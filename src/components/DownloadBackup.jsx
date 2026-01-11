@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { db } from '../firebase/firebase';
+import { db, auth } from '../firebase/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function DownloadBackup() {
@@ -21,6 +22,13 @@ function DownloadBackup() {
           ...doc.data(),
         }));
 
+        // Ordina i backup dal più recente al più vecchio
+        backupList.sort((a, b) => {
+          const dateA = a.timestamp?.toDate?.() || new Date(0);
+          const dateB = b.timestamp?.toDate?.() || new Date(0);
+          return dateB - dateA; // Decrescente (più recente prima)
+        });
+
         setBackups(backupList);
         setLoading(false);
       } catch (err) {
@@ -33,16 +41,40 @@ function DownloadBackup() {
     fetchBackups();
   }, []);
 
-  const downloadBackup = (backup) => {
+  const downloadBackup = async (backup) => {
     try {
       // Leggi il file Excel dal dato base64
       const workbook = XLSX.read(backup.data, { type: 'base64' });
 
       // Salva il file localmente
       XLSX.writeFile(workbook, backup.fileName);
+      
+      // Log successo
+      await logAction({
+        action: AUDIT_ACTIONS.DOWNLOAD_BACKUP,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Download backup: ${backup.fileName}`,
+        details: {
+          fileName: backup.fileName,
+          backupId: backup.id,
+          timestamp: backup.timestamp || 'unknown',
+        },
+        status: 'SUCCESS',
+      });
     } catch (error) {
       console.error('Errore durante il download del backup:', error);
       setError('Errore durante il download del backup.');
+      
+      // Log errore
+      await logAction({
+        action: AUDIT_ACTIONS.DOWNLOAD_BACKUP,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore download backup: ${error.message}`,
+        details: { fileName: backup.fileName, errorMessage: error.message },
+        status: 'FAILURE',
+      });
     }
   };
 
@@ -60,11 +92,25 @@ function DownloadBackup() {
         <div className="list-group">
           {backups.map((backup, index) => (
             <div key={index} className="list-group-item d-flex justify-content-between align-items-center">
-              <span>{backup.fileName}</span>
+              <div>
+                <span className="fw-bold">{backup.fileName}</span>
+                {backup.timestamp && (
+                  <small className="text-muted d-block">
+                    {new Date(backup.timestamp.toDate()).toLocaleString('it-IT', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </small>
+                )}
+              </div>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => downloadBackup(backup)}
               >
+                <i className="fas fa-download me-1"></i>
                 Scarica
               </button>
             </div>

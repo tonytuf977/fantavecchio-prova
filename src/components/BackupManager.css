@@ -1,0 +1,126 @@
+/* BackupManager.css */
+
+.backup-manager-container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.backup-manager-container h2 {
+  color: #333;
+  font-weight: 600;
+}
+
+.backup-manager-container .card {
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.backup-manager-container .table {
+  background-color: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.backup-manager-container .table thead {
+  background-color: #f8f9fa;
+}
+
+.backup-manager-container .table tbody tr:hover {
+  background-color: #f1f3f5;
+}
+
+.backup-manager-container .btn-sm {
+  padding: 0.25rem 0.5rem;
+}
+
+.backup-manager-container .modal-content {
+  border-radius: 8px;
+}
+
+.backup-manager-container .modal-header.bg-warning {
+  color: #000;
+}
+
+.backup-manager-container .badge {
+  font-size: 0.85em;
+  font-weight: 500;
+  padding: 0.35em 0.65em;
+}
+
+.backup-manager-container pre {
+  font-size: 0.875rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.backup-manager-container .card.text-center {
+  border: 1px solid #dee2e6;
+  transition: transform 0.2s;
+}
+
+.backup-manager-container .card.text-center:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.backup-manager-container .spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 0.15em;
+}
+
+@media (max-width: 767px) {
+  .backup-manager-container {
+    padding: 10px !important;
+  }
+
+  .backup-manager-container h2 {
+    font-size: 1.3rem !important;
+  }
+
+  .backup-manager-container .card {
+    margin-bottom: 15px;
+    border-radius: 8px;
+  }
+
+  .backup-manager-container .card-body {
+    padding: 15px !important;
+  }
+
+  .backup-manager-container .table {
+    font-size: 0.8rem;
+    display: block;
+    overflow-x: auto;
+  }
+  
+  .backup-manager-container .btn-sm {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    margin: 2px;
+  }
+
+  .backup-manager-container .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .backup-manager-container .badge {
+    font-size: 0.7em;
+    padding: 0.3em 0.5em;
+  }
+
+  .backup-manager-container pre {
+    font-size: 0.7rem;
+    max-height: 200px;
+  }
+
+  .backup-manager-container .modal-body {
+    padding: 15px !important;
+  }
+
+  .backup-manager-container .form-control {
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+}

@@ -24,6 +24,10 @@ import ValutazioneScambio from './components/ValutazioneScambio';
 import DownloadBackup from './components/DownloadBackup';
 import Dado from './components/dado';
 import ImportRoseExcel from './components/ImportRoseExcel';
+import AuditLogs from './components/AuditLogs';
+import ErrorLogs from './components/ErrorLogs';
+import ErrorBoundary from './components/ErrorBoundary';
+import BackupManager from './components/BackupManager';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -63,43 +67,52 @@ function App() {
 
   return (
     <Router>
-      <NotificheProvider>
-        <Navbar user={user} isAdmin={isAdmin} />
-        {emailNotification && (
-          <EmailNotification 
-            message={emailNotification.message} 
-            isSuccess={emailNotification.isSuccess} 
-          />
-        )}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/home" element={<Home />} />
-          <Route path="/giocatori" element={<ListaGiocatori />} />
-          <Route path="/squadre" element={<ListaSquadre />} />
-          <Route path="/Dado" element={<Dado />} />
-          {isAdmin && (
-            <>
-              <Route path="/import" element={<ImportExcel />} />
-              <Route path="/ripristinoRose" element={<RipristinoRoseSquadre />} />
-              <Route path="/aggiungi-giocatore" element={<AggiungiGiocatoreSquadra />} />
-            </>
+      <ErrorBoundary>
+        <NotificheProvider>
+          <Navbar user={user} isAdmin={isAdmin} />
+          {emailNotification && (
+            <EmailNotification 
+              message={emailNotification.message} 
+              isSuccess={emailNotification.isSuccess} 
+            />
           )}
-          <Route path="/modifica-giocatore" element={<ModificaGiocatore />} />
-          <Route path="/registrazione" element={<Registrazione />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/profilo" element={<Profili />} />
-          <Route path="/associa" element={<AssociaSquadreUtenti />} />
-          <Route 
-            path="/richiestaScambio" 
-            element={<RichiestaScambio onEmailSent={handleEmailNotification} />} 
-          />
-          <Route path="/accettaScambi" element={<GestioneScambiAdmin />} />
-          <Route path="/storicoScambi" element={<StoricoScambi />} />
-          <Route path="/valutazioneScambio" element={<ValutazioneScambio />} />
-          <Route path="/download-backup" element={<DownloadBackup />} />
-          <Route path="/import-rose-excel" element={<ImportRoseExcel />} />
-        </Routes>
-      </NotificheProvider>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/giocatori" element={<ListaGiocatori />} />
+            <Route path="/squadre" element={<ListaSquadre />} />
+            <Route path="/Dado" element={<Dado />} />
+            {isAdmin && (
+              <>
+                <Route path="/import" element={<ImportExcel />} />
+                <Route path="/ripristinoRose" element={<RipristinoRoseSquadre />} />
+                <Route path="/aggiungi-giocatore" element={<AggiungiGiocatoreSquadra />} />
+              </>
+            )}
+            <Route path="/modifica-giocatore" element={<ModificaGiocatore />} />
+            <Route path="/registrazione" element={<Registrazione />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/profilo" element={<Profili />} />
+            <Route path="/associa" element={<AssociaSquadreUtenti />} />
+            <Route 
+              path="/richiestaScambio" 
+              element={<RichiestaScambio onEmailSent={handleEmailNotification} />} 
+            />
+            <Route path="/accettaScambi" element={<GestioneScambiAdmin />} />
+            <Route path="/storicoScambi" element={<StoricoScambi />} />
+            <Route path="/valutazioneScambio" element={<ValutazioneScambio />} />
+            <Route path="/download-backup" element={<DownloadBackup />} />
+            <Route path="/import-rose-excel" element={<ImportRoseExcel />} />
+            {isAdmin && (
+              <>
+                <Route path="/audit-logs" element={<AuditLogs />} />
+                <Route path="/error-logs" element={<ErrorLogs />} />
+                <Route path="/backup-manager" element={<BackupManager />} />
+              </>
+            )}
+          </Routes>
+        </NotificheProvider>
+      </ErrorBoundary>
     </Router>
   );
 }

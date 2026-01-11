@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase/firebase';
+import { db, auth } from '../firebase/firebase';
 import { collection, query, where, getDocs, updateDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { useGiocatori } from '../hook/useGiocatori';
 import { useSquadre } from '../hook/useSquadre';
 import { Modal, Button, Collapse } from 'react-bootstrap';
 import emailjs from 'emailjs-com';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
+import { captureError, ERROR_TYPES, SEVERITY } from '../service/ErrorLogger';
+import { createBackup, BACKUP_TYPES } from '../service/BackupService';
 
 // Valori di EmailJS hardcoded identici a RichiestaScambio
 const EMAILJS_SERVICE_ID = 'service_0knpeti';
@@ -172,11 +175,52 @@ function GestioneScambiAdmin() {
       );
 
       console.log('Risposta EmailJS:', response);
+      
+      // Log successo approvazione
+      await logAction({
+        action: AUDIT_ACTIONS.APPROVE_TRADE,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Scambio approvato tra ${richiesta.squadraRichiedenteNome} e ${richiesta.squadraAvversariaNome}`,
+        details: {
+          richiestaId: richiesta.id,
+          tipoScambio: richiesta.tipoScambio,
+          squadraRichiedente: richiesta.squadraRichiedenteNome,
+          squadraAvversaria: richiesta.squadraAvversariaNome,
+        },
+        status: 'SUCCESS',
+      });
+      
       setModalMessage('Scambio approvato dall\'admin e notifica inviata agli utenti. In attesa dell\'accettazione dell\'altro utente.');
       setShowModal(true);
       setRichiesteScambio(richiesteScambio.filter(r => r.id !== richiesta.id));
     } catch (error) {
       console.error('Errore nell\'approvazione dello scambio o nell\'invio dell\'email:', error);
+      
+      // Log errore audit
+      await logAction({
+        action: AUDIT_ACTIONS.APPROVE_TRADE,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore approvazione scambio: ${error.message}`,
+        details: { richiestaId: richiesta.id, errorMessage: error.message },
+        status: 'FAILURE',
+      });
+      
+      // Log errore tecnico
+      await captureError(error, {
+        errorType: error.message?.includes('email') ? ERROR_TYPES.EMAIL_ERROR : ERROR_TYPES.DATABASE_WRITE_ERROR,
+        component: 'GestioneScambiAdmin',
+        action: 'Approvazione Scambio',
+        severity: SEVERITY.HIGH,
+        userEmail: auth.currentUser?.email,
+        userId: auth.currentUser?.uid,
+        additionalInfo: {
+          richiestaId: richiesta.id,
+          tipoScambio: richiesta.tipoScambio,
+        }
+      });
+      
       setModalMessage('Si è verificato un errore nell\'approvazione dello scambio o nell\'invio dell\'email: ' + error.message);
       setShowModal(true);
     }
@@ -185,11 +229,50 @@ function GestioneScambiAdmin() {
   const handleRifiuta = async (richiestaId) => {
     try {
       await updateDoc(doc(db, 'RichiesteScambio', richiestaId), { stato: 'Rifiutata' });
+      
+      // Log successo rifiuto
+      const richiesta = richiesteScambio.find(r => r.id === richiestaId);
+      await logAction({
+        action: AUDIT_ACTIONS.REJECT_TRADE,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Scambio rifiutato tra ${richiesta?.squadraRichiedenteNome} e ${richiesta?.squadraAvversariaNome}`,
+        details: {
+          richiestaId: richiestaId,
+          tipoScambio: richiesta?.tipoScambio,
+        },
+        status: 'SUCCESS',
+      });
+      
       setModalMessage('Richiesta di scambio rifiutata');
       setShowModal(true);
       setRichiesteScambio(richiesteScambio.filter(r => r.id !== richiestaId));
     } catch (error) {
       console.error('Errore nel rifiuto della richiesta:', error);
+      
+      // Log errore audit
+      await logAction({
+        action: AUDIT_ACTIONS.REJECT_TRADE,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore rifiuto scambio: ${error.message}`,
+        details: { richiestaId: richiestaId, errorMessage: error.message },
+        status: 'FAILURE',
+      });
+      
+      // Log errore tecnico
+      await captureError(error, {
+        errorType: ERROR_TYPES.DATABASE_WRITE_ERROR,
+        component: 'GestioneScambiAdmin',
+        action: 'Rifiuto Scambio',
+        severity: SEVERITY.MEDIUM,
+        userEmail: auth.currentUser?.email,
+        userId: auth.currentUser?.uid,
+        additionalInfo: {
+          richiestaId: richiestaId,
+        }
+      });
+      
       setModalMessage('Si è verificato un errore nel rifiuto della richiesta: ' + error.message);
       setShowModal(true);
     }

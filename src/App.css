@@ -1,5 +1,7 @@
 .App {
   text-align: center;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .App-logo {
@@ -34,5 +36,17 @@
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Mobile Responsive App */
+@media (max-width: 767px) {
+  .App {
+    font-size: 14px;
+  }
+
+  .App-header {
+    padding: 20px 10px;
+    font-size: calc(8px + 2vmin);
   }
 }

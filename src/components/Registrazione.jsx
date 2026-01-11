@@ -3,6 +3,7 @@ import { auth } from '../firebase/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useUtenti } from '../hook/useUtenti';
 import { useNavigate } from 'react-router-dom';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
 
 function Registrazione() {
   const [email, setEmail] = useState('');
@@ -25,9 +26,35 @@ function Registrazione() {
         ruolo: 'utente' // Ruolo predefinito
       });
 
+      // Registra la nuova registrazione nell'audit log
+      await logAction({
+        action: AUDIT_ACTIONS.REGISTER,
+        userEmail: user.email,
+        userId: user.uid,
+        description: `Nuovo utente registrato: ${user.email}`,
+        details: {
+          ruolo: 'utente',
+          timestamp: new Date().toISOString(),
+        },
+        status: 'SUCCESS',
+      });
+
       navigate('/login'); // Reindirizza alla pagina di login dopo la registrazione
     } catch (error) {
       setError(error.message);
+      
+      // Registra tentativo di registrazione fallito
+      await logAction({
+        action: AUDIT_ACTIONS.REGISTER,
+        userEmail: email,
+        userId: 'unknown',
+        description: `Registrazione fallita: ${error.message}`,
+        details: {
+          errorCode: error.code,
+          errorMessage: error.message,
+        },
+        status: 'FAILURE',
+      });
     }
   };
 

@@ -1,0 +1,78 @@
+/* Stili mobile specifici per ListaSquadre - Priorità massima */
+
+@media (max-width: 767px) {
+  /* FORZA button group in riga orizzontale */
+  .lista-squadre-container td .btn-group,
+  .lista-squadre-container td div.btn-group,
+  .lista-squadre-container td div[role="group"],
+  .lista-squadre-container table td .btn-group {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 2px !important;
+    width: auto !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    margin-left: auto !important;
+  }
+
+  .lista-squadre-container td .btn-group button,
+  .lista-squadre-container td .btn-group .btn,
+  .lista-squadre-container td div.btn-group button,
+  .lista-squadre-container td div[role="group"] button {
+    flex: 0 0 auto !important;
+    min-width: 30px !important;
+    max-width: 42px !important;
+    padding: 2px 3px !important;
+    font-size: 0.6rem !important;
+    margin: 1px !important;
+    display: inline-block !important;
+    width: auto !important;
+    line-height: 1 !important;
+  }
+
+  .lista-squadre-container td .btn-group .btn-danger {
+    min-width: 38px !important;
+    max-width: 48px !important;
+    font-size: 0.55rem !important;
+  }
+
+  /* Input compatti - ALLINEATI A DESTRA */
+  .lista-squadre-container td input[type="number"],
+  .lista-squadre-container td input.form-control[type="number"] {
+    max-width: 70px !important;
+    font-size: 11px !important;
+    padding: 3px 4px !important;
+    height: 26px !important;
+    margin-left: auto !important;
+    display: block !important;
+  }
+
+  .lista-squadre-container td input[type="date"],
+  .lista-squadre-container td input.form-control-sm[type="date"] {
+    max-width: 100px !important;
+    font-size: 10px !important;
+    padding: 2px 4px !important;
+    height: 26px !important;
+    margin-left: auto !important;
+    display: block !important;
+  }
+
+  /* Select multipli compatti - ALLINEATI A DESTRA */
+  .lista-squadre-container td select[multiple],
+  .lista-squadre-container td select[multiple].form-select-sm {
+    max-width: 100px !important;
+    min-height: 46px !important;
+    height: 46px !important;
+    font-size: 9px !important;
+    padding: 2px !important;
+    line-height: 1.1 !important;
+    margin-left: auto !important;
+    display: block !important;
+  }
+
+  .lista-squadre-container td select[multiple] option {
+    font-size: 9px !important;
+    padding: 1px !important;
+  }
+}

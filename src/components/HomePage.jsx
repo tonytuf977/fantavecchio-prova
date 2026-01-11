@@ -14,7 +14,10 @@ import {
   FaFileExport,
   FaFileArchive,
   FaFileAlt,
-  FaDownload
+  FaDownload,
+  FaClipboardList,
+  FaExclamationTriangle,
+  FaDatabase
 } from 'react-icons/fa';
 import { GiSoccerBall, GiWizardStaff, GiSoccerField, GiPerspectiveDiceSixFacesSix } from 'react-icons/gi';
 import regolamentoPDF from '../Regolamenti/Regolamento ufficiale.pdf';
@@ -127,6 +130,18 @@ function HomePage() {
             <Link to="/import-rose-excel" className="home-card admin-card" data-aos="zoom-in-left">
               <FaFileExcel />
               <h3>Import Rose Excel di Leghe</h3>
+            </Link>
+            <Link to="/audit-logs" className="home-card admin-card" data-aos="zoom-in-up">
+              <FaClipboardList />
+              <h3>Audit Logs</h3>
+            </Link>
+            <Link to="/error-logs" className="home-card admin-card" data-aos="zoom-in-down">
+              <FaExclamationTriangle />
+              <h3>Error Logs</h3>
+            </Link>
+            <Link to="/backup-manager" className="home-card admin-card" data-aos="zoom-in-left">
+              <FaDatabase />
+              <h3>Backup Manager</h3>
             </Link>
           </>
         )}

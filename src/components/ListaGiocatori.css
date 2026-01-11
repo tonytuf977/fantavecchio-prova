@@ -18,18 +18,94 @@
   .table th {
     font-weight: bold;
   }
-  .search-container {
+
+.search-container {
     width: 100%;
-    /* Rimuovere il padding e il margin di default, se necessario */
-    margin: 0;
+    margin: 0 0 15px 0;
     padding: 0;
 }
 
-.search-container input[type="text"] {
+.search-container input[type="text"],
+.search-input {
     width: 100%;
-    /* Facoltativo: per rendere la barra di ricerca più elegante */
-    box-sizing: border-box; /* Assicura che il padding e il border siano inclusi nella larghezza totale */
-    padding: 10px; /* Spazio interno */
-    border: 1px solid #ccc; /* Bordo della barra di ricerca */
-    border-radius: 4px; /* Angoli arrotondati */
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px; /* Previene zoom automatico su iOS */
 }
+
+/* Responsive Mobile per Lista Giocatori */
+@media (max-width: 767px) {
+  .search-container {
+    margin-bottom: 12px;
+  }
+
+  .search-input {
+    font-size: 14px !important;
+    padding: 10px !important;
+    border-radius: 6px;
+  }
+
+  /* Layout card per mobile */
+  .lista-giocatori-container {
+    padding: 8px;
+  }
+
+  .lista-giocatori-container h3 {
+    font-size: 1rem !important;
+    margin: 10px 0 !important;
+    font-weight: 600;
+  }
+
+  /* Tabella responsive con card */
+  .giocatori-table-mobile table,
+  .giocatori-table-mobile thead,
+  .giocatori-table-mobile tbody,
+  .giocatori-table-mobile th,
+  .giocatori-table-mobile td,
+  .giocatori-table-mobile tr {
+    display: block;
+  }
+
+  .giocatori-table-mobile thead tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+  }
+
+  .giocatori-table-mobile tr {
+    margin-bottom: 12px;
+    border: 1.5px solid #0d6efd;
+    border-radius: 8px;
+    padding: 8px;
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.08) 0%, rgba(13, 110, 253, 0.03) 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  .giocatori-table-mobile td {
+    border: none;
+    position: relative;
+    padding: 4px 4px 4px 38%;
+    text-align: right;
+    min-height: 28px;
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+
+  .giocatori-table-mobile td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 36%;
+    padding-right: 8px;
+    white-space: nowrap;
+    text-align: left;
+    font-weight: 600;
+    color: #0d6efd;
+    font-size: 0.8rem;
+    line-height: 1.3;
+  }
+}
+

@@ -14,8 +14,8 @@ const firebaseConfig = {
   storageBucket: "fantavecchio-manager.firebasestorage.app",
   messagingSenderId: "1087765312837",
   appId: "1:1087765312837:web:06741c3f2b6f89efcaba2c"
-
 };
+
 
 
 // Initialize Firebase

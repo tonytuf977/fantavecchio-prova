@@ -1,4 +1,9 @@
 /* customStyles.css */
+.lista-squadre-container {
+  width: 100%;
+  padding: 15px;
+}
+
 .table thead th {
     background-color: yellow;
     color: black;
@@ -18,10 +23,12 @@
     background-color: green;
     border-color: green;
   }
+
   .table-primary th {
     background-color: var(--bs-primary) !important; /* Colore di sfondo primario */
     color: white; /* Colore del testo bianco */
   }
+
   .text-warning {
     color: #ffc107; /* Giallo */
   }
@@ -29,7 +36,347 @@
   .text-danger {
     color: #dc3545; /* Rosso */
   }
+
 .text-date{
   color: white;
   background-color: #dc3545;
+}
+
+/* Squadre Grid */
+.squadre-buttons-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.squadre-buttons-grid .btn {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+/* Responsive Mobile per Lista Squadre */
+@media (max-width: 767px) {
+  .container-fluid {
+    padding: 5px !important;
+  }
+
+  .lista-squadre-container {
+    padding: 5px !important;
+  }
+
+  /* Titolo principale */
+  h2 {
+    font-size: 1.2rem !important;
+    margin: 10px 0 !important;
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: 1rem !important;
+    margin: 12px 0 8px !important;
+    font-weight: 600;
+  }
+
+  /* Griglia pulsanti squadre */
+  .squadre-buttons-grid {
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+
+  .squadre-buttons-grid .btn {
+    min-width: calc(50% - 2px);
+    font-size: 0.8rem;
+    padding: 8px 6px !important;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Dettagli squadra */
+  .dettagli-squadra-mobile {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 10px;
+  }
+
+  .dettagli-squadra-mobile p {
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  /* Input crediti */
+  .crediti-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .crediti-input-group input {
+    font-size: 14px !important;
+    padding: 8px !important;
+    height: 36px;
+  }
+
+  .crediti-input-group .btn {
+    width: 100% !important;
+    padding: 8px !important;
+    font-size: 0.85rem;
+  }
+
+  /* Tabelle - Layout Card Mobile */
+  .table-responsive {
+    overflow-x: visible !important;
+  }
+
+  .table {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .table tbody tr {
+    display: block;
+    margin-bottom: 12px;
+    border: 1.5px solid #ffc107;
+    border-radius: 8px;
+    padding: 8px;
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.08) 0%, rgba(255, 193, 7, 0.03) 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+
+  .table tbody td {
+    display: block;
+    width: 100% !important;
+    padding: 4px 4px 4px 38% !important;
+    text-align: right;
+    border: none !important;
+    position: relative;
+    min-height: 28px;
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+
+  .table tbody td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 36%;
+    font-weight: 600;
+    text-align: left;
+    color: #ffc107;
+    font-size: 0.8rem;
+    line-height: 1.3;
+  }
+
+  /* Input dentro le card */
+  .table tbody td input,
+  .table tbody td select {
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 14px !important;
+    padding: 4px 6px !important;
+    margin: 0 !important;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    height: 28px;
+  }
+
+  .table tbody td input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  .table tbody td input[type="number"]::-webkit-outer-spin-button,
+  .table tbody td input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .table tbody td input[type="date"] {
+    font-size: 12px !important;
+    padding: 2px 4px !important;
+  }
+
+  /* Competizioni select */
+  .table tbody td select[multiple] {
+    min-height: 60px !important;
+    font-size: 12px !important;
+    padding: 4px !important;
+  }
+
+  .table tbody td select[multiple] option {
+    padding: 4px;
+  }
+
+  /* Bottoni azioni */
+  .table tbody td .btn-group {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .table tbody td .btn-group .btn {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 6px !important;
+    font-size: 0.75rem !important;
+    line-height: 1.2;
+    border-radius: 4px;
+  }
+
+  .table tbody td .badge {
+    display: block;
+    margin-top: 6px;
+    padding: 4px 6px;
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+
+  /* Badge competizioni */
+  .competizioni-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+
+  .competizioni-badges .badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+  }
+
+  /* Sezione Admin Buttons */
+  .admin-buttons-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0;
+  }
+
+  .admin-buttons-section .btn {
+    width: 100% !important;
+    padding: 8px !important;
+    font-size: 0.8rem !important;
+    line-height: 1.3;
+  }
+
+  /* Select multiplo per giovani */
+  .form-select[multiple] {
+    font-size: 0.9rem !important;
+    min-height: 120px !important;
+  }
+
+  /* Row per giovani */
+  .row {
+    margin: 0 !important;
+  }
+
+  .row .col-md-8,
+  .row .col-md-4 {
+    padding: 0 !important;
+    margin-bottom: 10px;
+  }
+
+  /* Modal responsive */
+  .modal-dialog {
+    margin: 10px !important;
+    max-width: calc(100% - 20px) !important;
+  }
+
+  .modal-body {
+    padding: 15px !important;
+    font-size: 0.9rem;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+    gap: 8px;
+    padding: 15px !important;
+  }
+
+  .modal-footer .btn {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* Alert responsive */
+  .alert {
+    font-size: 0.85rem;
+    padding: 10px;
+    margin: 10px 0;
+  }
+
+  /* Testi colorati responsive */
+  .text-warning,
+  .text-danger,
+  .text-success,
+  .text-muted {
+    font-size: 0.9rem;
+  }
+
+  /* Form control generale */
+  .form-control,
+  .form-select {
+    font-size: 16px !important;
+    padding: 12px !important;
+    border-radius: 8px;
+  }
+
+  /* Spacing */
+  .mb-2 { margin-bottom: 8px !important; }
+  .mb-3 { margin-bottom: 10px !important; }
+  .mb-4 { margin-bottom: 12px !important; }
+  .mt-2 { margin-top: 8px !important; }
+  .mt-3 { margin-top: 10px !important; }
+  .mt-4 { margin-top: 12px !important; }
+  .mt-5 { margin-top: 15px !important; }
+
+  /* Card giocatore evidenziata */
+  .table tbody tr:hover {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
+    transform: scale(1.01);
+    transition: all 0.2s;
+  }
+
+  /* Scrollbar sottile */
+  *::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #ffc107;
+    border-radius: 4px;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 991px) {
+  .squadre-buttons-grid .btn {
+    min-width: calc(33.33% - 6px);
+  }
+  
+  .table {
+    font-size: 0.9rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px;
+  }
 }

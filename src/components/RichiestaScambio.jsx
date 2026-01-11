@@ -6,6 +6,8 @@ import { useGiocatori } from '../hook/useGiocatori';
 import { useUtenti } from '../hook/useUtenti';
 import { Modal, Button, Form, Collapse } from 'react-bootstrap';
 import emailjs from 'emailjs-com';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
+import { captureError, ERROR_TYPES, SEVERITY } from '../service/ErrorLogger';
 
 // Valori di EmailJS hardcoded
 const EMAILJS_SERVICE_ID = 'service_0knpeti';
@@ -86,18 +88,9 @@ function RichiestaScambio() {
           if (finestraData.dataChiusura) setDataChiusura(finestraData.dataChiusura);
           if (finestraData.oraChiusura) setOraChiusura(finestraData.oraChiusura);
           
-          // Controlla se è il momento di aprire/chiudere automaticamente
-          await checkAutomaticToggle(finestraData);
-          
-          // Dopo aver controllato i toggle automatici, aggiorna lo stato del button
-          // Rileggi i dati aggiornati dal database
-          const updatedFinestraDoc = await getDocs(query(collection(db, 'Impostazioni'), where('nome', '==', 'finestraScambi')));
-          if (!updatedFinestraDoc.empty) {
-            const updatedFinestraData = updatedFinestraDoc.docs[0].data();
-            setFinestraScambiAperta(updatedFinestraData.aperta);
-          } else {
-            setFinestraScambiAperta(finestraData.aperta);
-          }
+          // NON controllare toggle automatici al mount, solo aggiorna lo stato UI
+          // I toggle automatici saranno gestiti solo dal controllo periodico
+          setFinestraScambiAperta(finestraData.aperta);
         } else {
           // If the document doesn't exist, create it with a default value
           await setDoc(doc(db, 'Impostazioni', 'finestraScambi'), { nome: 'finestraScambi', aperta: true });
@@ -109,6 +102,9 @@ function RichiestaScambio() {
     }
   }, [squadre, utenti]);
 
+  // Funzione per controllare se è il momento di aprire/chiudere automaticamente
+  // NOTA: Questa funzione viene chiamata SOLO dal controllo periodico useEffect
+  // NON invia MAI email, aggiorna solo lo stato nel database
   const checkAutomaticToggle = async (finestraData) => {
     const now = new Date();
     const currentDateTime = now.getTime();
@@ -117,8 +113,10 @@ function RichiestaScambio() {
     if (finestraData.dataChiusura && finestraData.oraChiusura) {
       const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
       if (currentDateTime >= chiusuraDateTime && finestraData.aperta) {
-        await toggleFinestraScambi(false, true);
-        return; // Esci dopo aver fatto il toggle automatico
+        console.log('⏰ Attivazione chiusura automatica programmata (SENZA EMAIL)');
+        // skipEmail=true: NON inviare email nei toggle automatici
+        await toggleFinestraScambi(false, true, true);
+        return;
       }
     }
     
@@ -143,7 +141,9 @@ function RichiestaScambio() {
           }
         }
         
-        await toggleFinestraScambi(true, true);
+        console.log('⏰ Attivazione apertura automatica programmata (SENZA EMAIL)');
+        // skipEmail=true: NON inviare email nei toggle automatici
+        await toggleFinestraScambi(true, true, true);
         return;
       }
     }
@@ -178,18 +178,75 @@ function RichiestaScambio() {
     return `${year}/${month}/${day}`;
   };
 
-  const toggleFinestraScambi = async (nuovoStato, isAutomatic = false) => {
-    console.log(`Richiesta di cambio stato finestra: ${nuovoStato}, automatico: ${isAutomatic}`);
+  // Funzione per gestire il toggle manuale dall'admin con conferme
+  const handleAdminToggle = async (nuovoStato) => {
+    const azioneText = nuovoStato ? 'aprire' : 'chiudere';
+    const azioneTextCaps = nuovoStato ? 'APRIRE' : 'CHIUDERE';
+    
+    // Prima conferma: sei sicuro?
+    const conferma = window.confirm(
+      `Sei sicuro di voler ${azioneText.toUpperCase()} la finestra scambi?\n\n` +
+      `Questa azione cambier\u00e0 lo stato per tutti gli utenti.`
+    );
+    
+    if (!conferma) {
+      // Ripristina lo stato dello switch
+      setFinestraScambiAperta(!nuovoStato);
+      return;
+    }
+    
+    // Seconda conferma: vuoi inviare l'email?
+    const inviaEmail = window.confirm(
+      `Finestra scambi verr\u00e0 ${nuovoStato ? 'aperta' : 'chiusa'}.\n\n` +
+      `Vuoi inviare una EMAIL di notifica a tutti gli utenti?\n\n` +
+      `\u26a0\ufe0f Clicca OK per inviare l'email\n` +
+      `\u26a0\ufe0f Clicca Annulla per NON inviare email`
+    );
+    
+    // Esegui il toggle con o senza email in base alla scelta
+    await toggleFinestraScambi(nuovoStato, false, !inviaEmail);
+  };
+
+  const toggleFinestraScambi = async (nuovoStato, isAutomatic = false, skipEmail = false) => {
+    console.log(`Richiesta di cambio stato finestra: ${nuovoStato}, automatico: ${isAutomatic}, skipEmail: ${skipEmail}`);
     
     try {
+      const finestraScambiRef = doc(db, 'Impostazioni', 'finestraScambi');
+      
+      // Leggi lo stato corrente prima di aggiornare
+      const finestraDoc = await getDoc(finestraScambiRef);
+      const statoCorrente = finestraDoc.exists() ? finestraDoc.data().aperta : null;
+      const ultimaEmailInviata = finestraDoc.exists() ? finestraDoc.data().ultimaEmailInviata : null;
+      
+      // Se lo stato non è cambiato, non fare nulla
+      if (statoCorrente === nuovoStato) {
+        console.log('Stato già impostato, nessuna azione necessaria');
+        setFinestraScambiAperta(nuovoStato);
+        return;
+      }
+      
       // Aggiorna lo stato locale immediatamente
       setFinestraScambiAperta(nuovoStato);
       
       // Aggiorna il database
-      const finestraScambiRef = doc(db, 'Impostazioni', 'finestraScambi');
       await updateDoc(finestraScambiRef, { aperta: nuovoStato });
       
       console.log(`Stato finestra aggiornato nel database: ${nuovoStato}`);
+      
+      // Controlla se dobbiamo inviare l'email
+      let shouldSendEmail = !skipEmail;
+      
+      // Evita email duplicate: non inviare se l'ultima email è stata inviata meno di 5 minuti fa
+      if (shouldSendEmail && ultimaEmailInviata) {
+        const now = new Date().getTime();
+        const lastEmailTime = new Date(ultimaEmailInviata).getTime();
+        const minutesSinceLastEmail = (now - lastEmailTime) / (1000 * 60);
+        
+        if (minutesSinceLastEmail < 5) {
+          console.log(`Email non inviata: ultima email inviata ${minutesSinceLastEmail.toFixed(1)} minuti fa`);
+          shouldSendEmail = false;
+        }
+      }
       
       // Prepara il contenuto dell'email
       const statoText = nuovoStato ? 'aperta' : 'chiusa';
@@ -240,12 +297,28 @@ Buona fortuna a tutti! 🍀
 - Il Team FantaVecchio 🏆`;
       }
       
-      // Invia sempre l'email, indipendentemente da altri controlli
-      console.log(`Invio email per ${statoText} finestra...`);
-      await inviaEmailTuttiUtenti(soggetto, messaggio);
+      // Invia email solo se non è skipEmail e shouldSendEmail è true
+      if (shouldSendEmail) {
+        console.log(`\ud83d\udce7 Invio email per ${statoText} finestra...`);
+        await inviaEmailTuttiUtenti(soggetto, messaggio);
+        
+        // Salva il timestamp dell'invio email nel database
+        await updateDoc(finestraScambiRef, { 
+          ultimaEmailInviata: new Date().toISOString() 
+        });
+        
+        console.log('\u2705 Email inviata con successo!');
+        setModalMessage(`La finestra scambi \u00e8 stata ${statoText}${automaticText} e tutti gli utenti sono stati notificati via email!`);
+      } else {
+        const motivoSkip = skipEmail ? '(email non richiesta)' : '(email recente)';
+        console.log(`\u26a0\ufe0f Email NON inviata ${motivoSkip}`);
+        setModalMessage(`La finestra scambi è stata ${statoText}${automaticText}.`);
+      }
       
-      setModalMessage(`La finestra scambi è stata ${statoText}${automaticText} e tutti gli utenti sono stati notificati via email!`);
-      setShowModal(true);
+      // Mostra modal solo se richiesto manualmente dall'admin
+      if (!isAutomatic) {
+        setShowModal(true);
+      }
       
     } catch (error) {
       console.error('Errore nell\'aggiornamento dello stato della finestra scambi:', error);
@@ -549,6 +622,24 @@ Buona fortuna a tutti! 🍀
       );
       console.log('Email inviata con successo:', response);
 
+      // Log successo richiesta scambio
+      const squadraAvversariaNome = squadreAvversarie.find(s => s.id === squadraSelezionata)?.nome || squadraSelezionata;
+      await logAction({
+        action: AUDIT_ACTIONS.REQUEST_TRADE,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Richiesta scambio tra ${squadraUtente.nome} e ${squadraAvversariaNome}`,
+        details: {
+          squadraRichiedente: squadraUtente.nome,
+          squadraAvversaria: squadraAvversariaNome,
+          tipoScambio: tipoScambio,
+          giocatoriOfferti: giocatoriSelezionatiUtente.length || 0,
+          giocatoriRichiesti: giocatoriSelezionatiAvversario.length || 0,
+          creditiOfferti: creditiOfferti || 0,
+        },
+        status: 'SUCCESS',
+      });
+
       // Reset form
       setSquadraSelezionata('');
       setGiocatoriSelezionatiUtente([]);
@@ -562,12 +653,39 @@ Buona fortuna a tutti! 🍀
       console.error('Errore nell\'invio della richiesta:', error);
       setModalMessage('Si è verificato un errore nell\'invio della richiesta: ' + error.message);
       setShowModal(true);
+      
+      // Log errore audit
+      await logAction({
+        action: AUDIT_ACTIONS.REQUEST_TRADE,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore richiesta scambio: ${error.message}`,
+        details: { errorMessage: error.message },
+        status: 'FAILURE',
+      });
+      
+      // Log errore tecnico
+      await captureError(error, {
+        errorType: error.message?.includes('email') ? ERROR_TYPES.EMAIL_ERROR : ERROR_TYPES.DATABASE_WRITE_ERROR,
+        component: 'RichiestaScambio',
+        action: 'Invio Richiesta Scambio',
+        severity: SEVERITY.MEDIUM,
+        userEmail: auth.currentUser?.email,
+        userId: auth.currentUser?.uid,
+        additionalInfo: {
+          tipoScambio: tipoScambio,
+        }
+      });
     }
   };
 
-  // Aggiungi un useEffect per controllare periodicamente i cambiamenti automatici
+  // Controllo periodico per apertura/chiusura automatica
+  // ATTENZIONE: Questo sistema client-side ha limiti perché funziona solo quando
+  // qualcuno ha il componente aperto. Per una soluzione completa, servono Cloud Functions.
   useEffect(() => {
     if (!isAdmin) return;
+    
+    console.log('🔄 Avviato controllo periodico finestra scambi (ogni minuto)');
     
     const intervalId = setInterval(async () => {
       try {
@@ -575,62 +693,24 @@ Buona fortuna a tutti! 🍀
         if (!finestraScambiDoc.empty) {
           const finestraData = finestraScambiDoc.docs[0].data();
           
-          // Controlla se è il momento di aprire/chiudere automaticamente
-          const now = new Date();
-          const currentDateTime = now.getTime();
+          // Chiama checkAutomaticToggle che gestisce l'invio email
+          await checkAutomaticToggle(finestraData);
           
-          let needsUpdate = false;
-          
-          // Controlla prima la chiusura
-          if (finestraData.dataChiusura && finestraData.oraChiusura && finestraData.aperta) {
-            const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
-            if (currentDateTime >= chiusuraDateTime && finestraScambiAperta !== false) {
-              console.log('Attivazione chiusura automatica...');
-              await toggleFinestraScambi(false, true);
-              needsUpdate = true;
-            }
-          }
-          
-          // Controlla l'apertura solo se non abbiamo già fatto la chiusura
-          // e solo se siamo nel giorno programmato per l'apertura
-          if (!needsUpdate && finestraData.dataApertura && finestraData.oraApertura && !finestraData.aperta) {
-            const aperturaDateTime = new Date(`${finestraData.dataApertura}T${finestraData.oraApertura}`).getTime();
-            
-            // Verifica se siamo nel giorno dell'apertura
-            const aperturaDate = new Date(finestraData.dataApertura);
-            const currentDate = new Date();
-            const isSameDay = aperturaDate.toDateString() === currentDate.toDateString();
-            
-            if (isSameDay && currentDateTime >= aperturaDateTime && finestraScambiAperta !== true) {
-              // Verifica che non sia già passato l'orario di chiusura dello stesso giorno
-              let canOpen = true;
-              if (finestraData.dataChiusura && finestraData.oraChiusura) {
-                const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
-                if (currentDateTime >= chiusuraDateTime) {
-                  canOpen = false; // Non aprire se è già passato l'orario di chiusura
-                }
-              }
-              
-              if (canOpen) {
-                console.log('Attivazione apertura automatica...');
-                await toggleFinestraScambi(true, true);
-                needsUpdate = true;
-              }
-            }
-          }
-          
-          // Se non ci sono stati cambiamenti automatici, sincronizza comunque lo stato
-          if (!needsUpdate && finestraData.aperta !== finestraScambiAperta) {
-            console.log('Sincronizzazione stato finestra senza email...');
+          // Sincronizza lo stato UI se è cambiato senza nostro intervento
+          if (finestraData.aperta !== finestraScambiAperta) {
+            console.log('📊 Sincronizzazione stato UI con database');
             setFinestraScambiAperta(finestraData.aperta);
           }
         }
       } catch (error) {
-        console.error('Errore nel controllo automatico della finestra scambi:', error);
+        console.error('❌ Errore nel controllo automatico della finestra scambi:', error);
       }
     }, 60000); // Controlla ogni minuto
     
-    return () => clearInterval(intervalId);
+    return () => {
+      console.log('🛑 Fermato controllo periodico finestra scambi');
+      clearInterval(intervalId);
+    };
   }, [isAdmin, finestraScambiAperta]);
 
   if (loadingGiocatori) {
@@ -652,7 +732,7 @@ Buona fortuna a tutti! 🍀
               id="finestraScambiSwitch"
               label="Finestra Scambi Aperta"
               checked={finestraScambiAperta}
-              onChange={(e) => toggleFinestraScambi(e.target.checked)}
+              onChange={(e) => handleAdminToggle(e.target.checked)}
             />
             <Button
               variant="outline-primary"

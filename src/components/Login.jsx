@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'fir
 import { useUtenti } from '../hook/useUtenti';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Button } from 'react-bootstrap';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -33,6 +34,7 @@ function Login() {
         handleLogout();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setLogoutTimer = (duration) => {
@@ -43,11 +45,24 @@ function Login() {
 
   const handleLogout = async () => {
     try {
+      const currentEmail = localStorage.getItem('userEmail');
       await signOut(auth);
       localStorage.removeItem('userRole');
       localStorage.removeItem('userEmail');
       localStorage.removeItem('logoutTime');
       console.log('Logout eseguito');
+      
+      // Registra logout nell'audit log
+      if (currentEmail) {
+        await logAction({
+          action: AUDIT_ACTIONS.LOGOUT,
+          userEmail: currentEmail,
+          userId: auth.currentUser?.uid || 'unknown',
+          description: 'Utente disconnesso',
+          status: 'SUCCESS',
+        });
+      }
+      
       navigate('/login');
     } catch (error) {
       console.error("Errore durante il logout:", error);
@@ -69,15 +84,51 @@ function Login() {
 
         console.log('Accesso eseguito');
 
+        // Registra login nell'audit log
+        await logAction({
+          action: AUDIT_ACTIONS.LOGIN,
+          userEmail: user.email,
+          userId: user.uid,
+          description: `Login effettuato con successo - Ruolo: ${utenteDB.ruolo}`,
+          details: {
+            ruolo: utenteDB.ruolo,
+            timestamp: new Date().toISOString(),
+          },
+          status: 'SUCCESS',
+        });
+
         // Imposta il timer per il logout automatico dopo 1 ora
         setLogoutTimer(3600000); // 3600000 ms = 1 ora
 
         navigate('/home');
       } else {
         setError("Utente non trovato nel database");
+        
+        // Registra tentativo di login fallito
+        await logAction({
+          action: AUDIT_ACTIONS.LOGIN_FAILED,
+          userEmail: email,
+          userId: user.uid,
+          description: 'Login fallito: utente non trovato nel database',
+          status: 'FAILURE',
+        });
       }
     } catch (error) {
       console.error("Errore di login:", error);
+      
+      // Registra tentativo di login fallito
+      await logAction({
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        userEmail: email,
+        userId: 'unknown',
+        description: `Login fallito: ${error.message}`,
+        details: {
+          errorCode: error.code,
+          errorMessage: error.message,
+        },
+        status: 'FAILURE',
+      });
+
       setError(error.message);
     }
   };

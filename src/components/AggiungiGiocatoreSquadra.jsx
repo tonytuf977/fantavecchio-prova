@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useGiocatori } from '../hook/useGiocatori';
 import { useSquadre } from '../hook/useSquadre';
-import { db } from '../firebase/firebase';
+import { db, auth } from '../firebase/firebase';
 import { collection, getDocs, query, where, doc, setDoc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { Modal, Button } from 'react-bootstrap';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
+import { captureError, ERROR_TYPES, SEVERITY } from '../service/ErrorLogger';
+import { createBackup, BACKUP_TYPES } from '../service/BackupService';
 
 function AggiungiGiocatoreASquadra() {
   const [giocatoreNome, setGiocatoreNome] = useState('');
@@ -25,6 +28,13 @@ function AggiungiGiocatoreASquadra() {
   const aggiungiGiocatoreASquadra = async (giocatoreNome, squadraId) => {
     try {
       console.log(`Tentativo di aggiungere giocatore ${giocatoreNome} alla squadra ${squadraId}`);
+      
+      // Crea backup prima della modifica
+      await createBackup(
+        BACKUP_TYPES.MANUAL,
+        `Backup automatico prima di aggiungere giocatore ${giocatoreNome} alla squadra`,
+        { giocatoreNome, squadraId, operation: 'add_player' }
+      );
       
       const giocatoriRef = collection(db, 'Giocatori');
       const giocatoreQuery = query(giocatoriRef, where('nome', '==', giocatoreNome));
@@ -69,11 +79,50 @@ function AggiungiGiocatoreASquadra() {
       
       setModalMessage('Giocatore aggiunto alla squadra e aggiornato con successo');
       setShowModal(true);
+      
+      // Log successo
+      const squadraNome = squadre.find(s => s.id === squadraId)?.nome || squadraId;
+      await logAction({
+        action: AUDIT_ACTIONS.CREATE_PLAYER,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Giocatore ${giocatoreNome} aggiunto alla squadra ${squadraNome}`,
+        details: {
+          giocatore: giocatoreNome,
+          squadra: squadraNome,
+          squadraId: squadraId
+        },
+        status: 'SUCCESS',
+      });
      
     } catch (error) {
       console.error("Errore durante l'aggiunta del giocatore alla squadra:", error);
       setModalMessage(`Errore durante l'aggiunta del giocatore alla squadra: ${error.message}`);
       setShowModal(true);
+      
+      // Log errore audit
+      await logAction({
+        action: AUDIT_ACTIONS.CREATE_PLAYER,
+        userEmail: auth.currentUser?.email || 'unknown',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore aggiunta giocatore ${giocatoreNome}: ${error.message}`,
+        details: { giocatore: giocatoreNome, errorMessage: error.message },
+        status: 'FAILURE',
+      });
+      
+      // Log errore tecnico
+      await captureError(error, {
+        errorType: ERROR_TYPES.DATABASE_WRITE_ERROR,
+        component: 'AggiungiGiocatoreSquadra',
+        action: 'Aggiunta Giocatore a Squadra',
+        severity: SEVERITY.MEDIUM,
+        userEmail: auth.currentUser?.email,
+        userId: auth.currentUser?.uid,
+        additionalInfo: {
+          giocatore: giocatoreNome,
+          squadraId: squadraId,
+        }
+      });
     }
   };
 

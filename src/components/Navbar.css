@@ -13,4 +13,80 @@
     background-color: red;
     border-radius: 50%;
   }
+
+/* Responsive Mobile Navbar */
+@media (max-width: 767px) {
+  .navbar {
+    padding: 8px 12px !important;
+  }
+
+  .navbar-brand {
+    font-size: 0.9rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70%;
+  }
+
+  .navbar-brand img {
+    width: 32px !important;
+    height: 32px !important;
+    margin-right: 8px !important;
+  }
+
+  /* Nasconde il toggler button su mobile */
+  .navbar-toggler {
+    display: none !important;
+  }
+
+  /* Mostra sempre il menu su mobile */
+  .navbar-collapse {
+    display: flex !important;
+    background-color: transparent;
+    padding: 0;
+    margin: 0;
+  }
+
+  .navbar-nav {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .navbar-nav .nav-link {
+    padding: 8px !important;
+    margin: 0;
+  }
+
+  /* Ottimizza dropdown */
+  .dropdown-toggle::after {
+    display: none;
+  }
+
+  .navbar-nav .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .dropdown-menu {
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .dropdown-item {
+    padding: 12px 15px;
+    font-size: 0.95rem;
+    color: #fff;
+  }
+
+  .dropdown-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .notification-dot {
+    height: 12px;
+    width: 12px;
+    top: -3px;
+    right: -3px;
+  }
+}
   

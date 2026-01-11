@@ -1,0 +1,145 @@
+/* components/AuditLogs.css */
+
+.audit-logs-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.audit-logs-container .card {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.audit-logs-container .table {
+  background-color: white;
+  margin-bottom: 0;
+}
+
+.audit-logs-container .table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.audit-logs-container .table td {
+  vertical-align: middle;
+}
+
+.audit-logs-container .table-responsive {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.audit-logs-container .badge {
+  font-size: 0.85rem;
+  padding: 0.4em 0.6em;
+}
+
+.audit-logs-container .form-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.audit-logs-container .btn {
+  font-weight: 500;
+}
+
+.audit-logs-container small.text-muted {
+  display: block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767px) {
+  .audit-logs-container {
+    padding: 10px !important;
+  }
+
+  .audit-logs-container h2 {
+    font-size: 1.3rem !important;
+  }
+
+  .audit-logs-container .card {
+    border-radius: 8px;
+    margin-bottom: 15px;
+  }
+
+  .audit-logs-container .card-body {
+    padding: 15px !important;
+  }
+
+  .audit-logs-container .table {
+    font-size: 0.75rem;
+  }
+
+  .audit-logs-container .table-responsive {
+    max-height: 500px;
+  }
+
+  .audit-logs-container .badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+  }
+
+  .audit-logs-container .form-label {
+    font-size: 0.9rem;
+  }
+
+  .audit-logs-container .form-control,
+  .audit-logs-container .form-select {
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+
+  .audit-logs-container .btn {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .audit-logs-container small.text-muted {
+    font-size: 0.65rem;
+    max-width: 150px;
+  }
+
+  /* Tabella responsive con card */
+  .audit-logs-container .table thead {
+    display: none;
+  }
+
+  .audit-logs-container .table,
+  .audit-logs-container .table tbody,
+  .audit-logs-container .table tr,
+  .audit-logs-container .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .audit-logs-container .table tr {
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.95);
+  }
+
+  .audit-logs-container .table td {
+    text-align: right;
+    padding: 8px;
+    position: relative;
+    padding-left: 50%;
+  }
+
+  .audit-logs-container .table td:before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    width: 45%;
+    text-align: left;
+    font-weight: bold;
+  }
+}

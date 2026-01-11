@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/firebase';
 import { doc, updateDoc, getDoc, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
+import { createBackup, BACKUP_TYPES } from '../service/BackupService';
 
 function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
   const [giocatoriDaRinnovare, setGiocatoriDaRinnovare] = useState([]);
@@ -42,6 +43,13 @@ function RinnovoContratto({ squadraId, onRinnovoCompletato }) {
     if (!giocatoreDoc.exists()) throw new Error("Giocatore non trovato");
 
     const giocatore = giocatoreDoc.data();
+
+    // Crea backup prima del rinnovo
+    await createBackup(
+      BACKUP_TYPES.BEFORE_CONTRACT,
+      `Backup automatico prima rinnovo contratto giocatore: ${giocatore.nome}`,
+      { giocatoreId, giocatoreNome: giocatore.nome, durata, squadraId }
+    );
 
     // Controllo se il giocatore ha una data di scadenza
     if (giocatore.scadenza) {

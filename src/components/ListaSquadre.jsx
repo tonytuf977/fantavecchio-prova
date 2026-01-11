@@ -5,6 +5,7 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { useSquadre } from '../hook/useSquadre';
 import './ListaSquadre.css';
+import './ListaSquadre-mobile.css';
 import * as XLSX from 'xlsx';
 
 function ListaSquadre() {
@@ -194,12 +195,11 @@ function ListaSquadre() {
     if (!competizioni || !Array.isArray(competizioni)) return '';
     
     const emojiMap = {
-      'campionato': '🏆',
-      'champions': '⭐',
-      'coppecoppe': '🏅'
+      'campionato': '🏆 Campionato',
+      'coppe': '🏅 Coppe'
     };
     
-    return competizioni.map(comp => emojiMap[comp] || '').join(' ');
+    return competizioni.map(comp => emojiMap[comp] || '').join(', ');
   };
 
   // Funzione per gestire il cambio competizione
@@ -674,12 +674,39 @@ const handleApplyFilter = (giocatoreId, filter) => {
           // Carica giocatori principali della squadra corrente
           const giocatoriRef = collection(db, `Squadre/${squadraData.id}/giocatori`);
           const giocatoriSnapshot = await getDocs(giocatoriRef);
-          const giocatoriPrincipali = giocatoriSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const giocatoriPrincipali = giocatoriSnapshot.docs.map(doc => {
+            const data = { id: doc.id, ...doc.data() };
+            
+            // 🔍 DEBUG: Log competizioni originali dal database
+            console.log(`📊 [${squadraData.nome}] ${data.nome} - Competizioni DB:`, data.competizione, `(tipo: ${typeof data.competizione}, isArray: ${Array.isArray(data.competizione)})`);
+            
+            // Normalizza le competizioni come nel resto del codice
+            if (!data.competizione || (Array.isArray(data.competizione) && data.competizione.length === 0)) {
+              data.competizione = ['campionato'];
+              console.log(`  ↳ Impostato default: ['campionato']`);
+            } else if (data.competizione && !Array.isArray(data.competizione)) {
+              data.competizione = [data.competizione];
+              console.log(`  ↳ Convertito in array: [${data.competizione}]`);
+            } else {
+              console.log(`  ↳ Mantenuto array esistente:`, data.competizione);
+            }
+            
+            return data;
+          });
 
           // Carica lista giovani della squadra corrente
           const giovaniRef = collection(db, `Squadre/${squadraData.id}/listaGiovani`);
           const giovaniSnapshot = await getDocs(giovaniRef);
-          const giovaniArray = giovaniSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const giovaniArray = giovaniSnapshot.docs.map(doc => {
+            const data = { id: doc.id, ...doc.data() };
+            // Normalizza le competizioni anche per i giovani
+            if (!data.competizione || (Array.isArray(data.competizione) && data.competizione.length === 0)) {
+              data.competizione = ['campionato'];
+            } else if (data.competizione && !Array.isArray(data.competizione)) {
+              data.competizione = [data.competizione];
+            }
+            return data;
+          });
 
           // Combina tutti i giocatori con indicazione del tipo
           const tuttiGiocatori = [
@@ -946,9 +973,9 @@ const handleApplyFilter = (giocatoreId, filter) => {
   );
 
   return (
-    <div className="container-fluid p-3">
+    <div className="container-fluid lista-squadre-container p-3">
       <h2 className="my-4 text-center">Lista Squadre</h2>
-      <div className="d-flex flex-wrap gap-2 mb-4">
+      <div className="d-flex flex-wrap gap-2 mb-4 squadre-buttons-grid">
         {squadre.map((squadra) => (
           <button
             key={squadra.id}
@@ -965,7 +992,7 @@ const handleApplyFilter = (giocatoreId, filter) => {
         )}
       </div>
       {selectedSquadra && (
-        <div>
+        <div className="dettagli-squadra-mobile">
           <h3>Dettagli Squadra</h3>
           <p className={getValoreRosaClass(selectedSquadra.valoreRosa)}>
             Valore Rosa: {selectedSquadra.valoreRosa || 'N/A'}
@@ -996,20 +1023,20 @@ const handleApplyFilter = (giocatoreId, filter) => {
           </p>
           <h3>Giocatori di {selectedSquadra.nome || selectedSquadra.id}</h3>
           {isAdmin && (
-            <div className="mb-3">
+            <div className="admin-buttons-section mb-3">
               <button
-                className="btn btn-success me-2"
+                className="btn btn-success"
                 onClick={handleSaveAll}
                 disabled={Object.keys(modifiedPlayers).length === 0}
               >
-                Salva Tutto
+                💾 Salva Tutto {Object.keys(modifiedPlayers).length > 0 && `(${Object.keys(modifiedPlayers).length})`}
               </button>
               <button
-                className="btn btn-warning me-2 mb-2"
+                className="btn btn-warning"
                 onClick={ripristinaStatistiche}
-                title="⚠️ ATTENZIONE: Ripristina statistiche di TUTTI i giocatori di TUTTE le squadre! Azzera tutte le statistiche e sincronizza valore iniziale = valore attuale"
+                title="⚠️ ATTENZIONE: Ripristina statistiche di TUTTI i giocatori di TUTTE le squadre!"
               >
-                🌍 Ripristina Statistiche
+                🌍 Ripristina Statistiche Globali
               </button>
             </div>
           )}
@@ -1105,51 +1132,55 @@ const handleApplyFilter = (giocatoreId, filter) => {
                     ...(modifiedPlayers[giocatore.id] ? { outline: '2px solid #007bff' } : {})
                   }}
                 >
-                  <td>{giocatore.nome}</td>
-                  <td>{giocatore.posizione}</td>
-                  <td>
+                  <td data-label="Nome">{giocatore.nome}</td>
+                  <td data-label="Posizione">{giocatore.posizione}</td>
+                  <td data-label="Competizione">
                     {isAdmin ? (
                       <select
                         multiple
                         value={Array.isArray(giocatore.competizione) ? giocatore.competizione : (giocatore.competizione ? [giocatore.competizione] : ['campionato'])}
                         onChange={(e) => handleCompetizioneChange(giocatore.id, e.target.selectedOptions)}
                         className="form-select form-select-sm"
-                        style={{ height: '80px' }}
-                        size="3"
+                        size="2"
                       >
                         <option value="campionato">🏆 Campionato</option>
-                        <option value="champions">⭐ Champions</option>
-                        <option value="coppecoppe">🏅 Coppe delle Coppe</option>
+                        <option value="coppe">🏅 Coppe</option>
                       </select>
                     ) : (
-                      <span style={{ fontSize: '1.2rem' }}>
+                      <span style={{ fontSize: '0.75rem' }}>
                         {getCompetizioneEmoji(Array.isArray(giocatore.competizione) ? giocatore.competizione : (giocatore.competizione ? [giocatore.competizione] : ['campionato']))}
                       </span>
                     )}
                   </td>
-                  <td>{giocatore.gol}</td>
-                  <td>{giocatore.presenze}</td>
-                  <td>
-                    <input
-                      type="number"
-                      value={giocatore.valoreIniziale}
-                      onChange={(e) => handleEdit(giocatore.id, 'valoreIniziale', e.target.value)}
-                      className="form-control"
-                      min="0"
-                      disabled={!isAdmin}
-                    />
+                  <td data-label="Gol">{giocatore.gol}</td>
+                  <td data-label="Presenze">{giocatore.presenze}</td>
+                  <td data-label="Valore Iniziale">
+                    {isAdmin ? (
+                      <input
+                        type="number"
+                        value={giocatore.valoreIniziale}
+                        onChange={(e) => handleEdit(giocatore.id, 'valoreIniziale', e.target.value)}
+                        className="form-control"
+                        min="0"
+                      />
+                    ) : (
+                      <span>{giocatore.valoreIniziale}</span>
+                    )}
                   </td>
-                  <td>
-                    <input
-                      type="number"
-                      value={giocatore.valoreAttuale}
-                      onChange={(e) => handleEdit(giocatore.id, 'valoreAttuale', e.target.value)}
-                      className="form-control"
-                      min="0"
-                      disabled={!isAdmin}
-                    />
+                  <td data-label="Valore Attuale">
+                    {isAdmin ? (
+                      <input
+                        type="number"
+                        value={giocatore.valoreAttuale}
+                        onChange={(e) => handleEdit(giocatore.id, 'valoreAttuale', e.target.value)}
+                        className="form-control"
+                        min="0"
+                      />
+                    ) : (
+                      <span>{giocatore.valoreAttuale}</span>
+                    )}
                   </td>
-                  <td>
+                  <td data-label="Scadenza">
                     {!giocatore.squadraSerieA || giocatore.squadraSerieA === null ? (
                       // Giocatore CONGELATO (squadraSerieA = null) -> Campo tempo congelamento
                       <div className="d-flex align-items-center">
@@ -1189,14 +1220,14 @@ const handleApplyFilter = (giocatoreId, filter) => {
                       )
                     )}
                   </td>
-                  <td>{giocatore.ammonizioni}</td>
-                  <td>{giocatore.assist}</td>
-                  <td>{giocatore.autogol}</td>
-                  <td>{giocatore.espulsioni}</td>
-                  <td>{giocatore.golSubiti}</td>
-                  <td>{giocatore.voto}</td>
+                  <td data-label="Ammonizioni">{giocatore.ammonizioni}</td>
+                  <td data-label="Assist">{giocatore.assist}</td>
+                  <td data-label="Autogol">{giocatore.autogol}</td>
+                  <td data-label="Espulsioni">{giocatore.espulsioni}</td>
+                  <td data-label="Gol Subiti">{giocatore.golSubiti}</td>
+                  <td data-label="Media Voto">{giocatore.voto}</td>
                   {isAdmin && (
-                    <td>
+                    <td data-label="Azioni">
                       <div className="btn-group" role="group">
                         {['+6', '+12', '+18'].map((filter) => (
                           <button
@@ -1288,13 +1319,13 @@ const handleApplyFilter = (giocatoreId, filter) => {
                 <tbody>
                   {listaGiovani.sort(sortGiocatoriByRuolo).map((giocatore) => (
                     <tr key={giocatore.id}>
-                      <td>{giocatore.nome}</td>
-                      <td>{giocatore.posizione}</td>
-                      <td>{giocatore.gol}</td>
-                      <td>{giocatore.presenze}</td>
-                      <td>{giocatore.valoreIniziale}</td>
-                      <td>{giocatore.valoreAttuale}</td>
-                      <td>
+                      <td data-label="Nome">{giocatore.nome}</td>
+                      <td data-label="Posizione">{giocatore.posizione}</td>
+                      <td data-label="Gol">{giocatore.gol}</td>
+                      <td data-label="Presenze">{giocatore.presenze}</td>
+                      <td data-label="Val. Iniziale">{giocatore.valoreIniziale}</td>
+                      <td data-label="Val. Attuale">{giocatore.valoreAttuale}</td>
+                      <td data-label="Scadenza">
                         {!giocatore.squadraSerieA || giocatore.squadraSerieA === null || giocatore.squadraSerieA === '' ? (
                           <span className="text-muted">❄️ Congelato</span>
                         ) : (
@@ -1303,14 +1334,14 @@ const handleApplyFilter = (giocatoreId, filter) => {
                           </span>
                         )}
                       </td>
-                      <td>{giocatore.ammonizioni}</td>
-                      <td>{giocatore.assist}</td>
-                      <td>{giocatore.autogol}</td>
-                      <td>{giocatore.espulsioni}</td>
-                      <td>{giocatore.golSubiti}</td>
-                      <td>{giocatore.voto}</td>
+                      <td data-label="Ammonizioni">{giocatore.ammonizioni}</td>
+                      <td data-label="Assist">{giocatore.assist}</td>
+                      <td data-label="Autogol">{giocatore.autogol}</td>
+                      <td data-label="Espulsioni">{giocatore.espulsioni}</td>
+                      <td data-label="Gol Subiti">{giocatore.golSubiti}</td>
+                      <td data-label="Media Voto">{giocatore.voto}</td>
                       {isAdmin && (
-                        <td>
+                        <td data-label="Azioni">
                           <button
                             className="btn btn-warning btn-sm"
                             onClick={() => handleRimuoviGiovane(giocatore.id)}

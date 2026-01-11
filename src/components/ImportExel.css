@@ -1,9 +1,12 @@
 .card {
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    margin: 15px;
+    border-radius: 8px;
   }
   
   .progress {
     height: 25px;
+    border-radius: 8px;
   }
   
   .progress-bar {
@@ -19,4 +22,49 @@
   .btn-primary:hover {
     background-color: #0056b3;
     border-color: #0056b3;
+  }
+
+  /* Responsive Mobile per Import Excel */
+  @media (max-width: 767px) {
+    .card {
+      margin: 10px;
+      border-radius: 8px;
+    }
+
+    .card-body {
+      padding: 15px !important;
+    }
+
+    .card-title {
+      font-size: 1.2rem !important;
+    }
+
+    .form-control-file,
+    input[type="file"] {
+      font-size: 0.9rem;
+      padding: 10px;
+      width: 100%;
+    }
+
+    .btn {
+      width: 100% !important;
+      padding: 12px !important;
+      font-size: 1rem !important;
+      margin-bottom: 10px;
+    }
+
+    .progress {
+      height: 30px !important;
+      margin: 15px 0;
+    }
+
+    .progress-bar {
+      font-size: 0.85rem;
+    }
+
+    .alert {
+      font-size: 0.9rem;
+      padding: 12px;
+      margin: 10px 0;
+    }
   }

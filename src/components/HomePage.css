@@ -192,15 +192,75 @@ body {
   40% { opacity: 1; }
 }
 
-@media (max-width: 768px) {
+/* Mobile Responsive */
+@media (max-width: 767px) {
+  .home-wrapper {
+    padding: 15px 10px 80px;
+  }
+
+  .home-header h1 {
+    font-size: 2em !important;
+    margin-bottom: 8px;
+  }
+
+  .home-header p {
+    font-size: 1em;
+  }
+
+  .logo-container {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 15px;
+  }
+
+  .logo-ball {
+    font-size: 50px;
+  }
+
+  .logo-wand {
+    font-size: 40px;
+  }
+
+  .home-buttons {
+    gap: 12px;
+    padding: 0 5px;
+  }
+
   .home-card {
-    width: calc(50% - 20px);
+    width: calc(50% - 6px);
+    padding: 15px 10px;
+    border-radius: 12px;
+  }
+
+  .home-card svg {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+
+  .home-card h3 {
+    font-size: 0.85em;
+    margin: 8px 0 0;
+  }
+
+  .home-button {
+    padding: 10px 16px;
+    font-size: 0.9em;
+    margin: 5px;
   }
 }
 
 @media (max-width: 480px) {
   .home-card {
-    width: 100%;
+    width: calc(50% - 6px);
+    padding: 12px 8px;
+  }
+
+  .home-card svg {
+    font-size: 28px;
+  }
+
+  .home-card h3 {
+    font-size: 0.8em;
   }
 }
 /* Aggiungi queste regole alla fine del tuo file CSS esistente */

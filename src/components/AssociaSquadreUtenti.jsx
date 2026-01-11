@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useSquadre } from '../hook/useSquadre';
 import { useUtenti } from '../hook/useUtenti';
-import { db } from '../firebase/firebase';
+import { db, auth } from '../firebase/firebase';
 import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { Modal, Button } from 'react-bootstrap';
+import { logAction, AUDIT_ACTIONS } from '../service/AuditService';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function AssociaSquadreUtenti() {
@@ -63,6 +64,24 @@ function AssociaSquadreUtenti() {
       }
 
       console.log('Associazione completata con successo');
+      
+      // Log successo
+      const squadraNome = squadre.find(s => s.id === selectedSquadra)?.nome || selectedSquadra;
+      const utenteEmail = utenti.find(u => u.id === selectedUtente)?.email || selectedUtente;
+      await logAction({
+        action: AUDIT_ACTIONS.ASSOCIATE_USER_TEAM,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Utente ${utenteEmail} associato alla squadra ${squadraNome}`,
+        details: {
+          utenteId: selectedUtente,
+          utenteEmail: utenteEmail,
+          squadraId: selectedSquadra,
+          squadraNome: squadraNome,
+        },
+        status: 'SUCCESS',
+      });
+      
       setModalMessage('Associazione completata con successo');
       setShowModal(true);
       setSelectedSquadra('');
@@ -72,6 +91,17 @@ function AssociaSquadreUtenti() {
       await fetchSquadre();
     } catch (error) {
       console.error("Errore durante l'associazione:", error);
+      
+      // Log errore
+      await logAction({
+        action: AUDIT_ACTIONS.ASSOCIATE_USER_TEAM,
+        userEmail: auth.currentUser?.email || 'admin',
+        userId: auth.currentUser?.uid || 'unknown',
+        description: `Errore associazione utente-squadra: ${error.message}`,
+        details: { errorMessage: error.message },
+        status: 'FAILURE',
+      });
+      
       setModalMessage("Errore durante l'associazione: " + error.message);
       setShowModal(true);
     }

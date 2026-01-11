@@ -383,7 +383,7 @@ function RipristinoRoseSquadre() {
             id: idGiocatore,
             nome: nomeGiocatoreReale,
             posizione: row[2]?.toString() || '',
-            competizioni: row[3]?.toString() || '',
+            competizione: row[3]?.toString().split(';').filter(c => c) || ['campionato'], // ✅ Converte stringa separata da ; in array
             tipo: row[4]?.toString() || 'Principale', // ✅ NUOVO: Legge il tipo dalla colonna E
             gol: Number(row[5]) || 0,        // ✅ AGGIORNATO: Gol dalla colonna F
             presenze: Number(row[6]) || 0,   // ✅ AGGIORNATO: Presenze dalla colonna G
@@ -408,26 +408,24 @@ function RipristinoRoseSquadre() {
           console.log('💾 Salvando giocatore:');
           console.log('   📝 Nome:', giocatore.nome);
           console.log('   🆔 ID:', giocatore.id);
-          console.log('   📋 Tipo:', giocatore.tipo); // ✅ NUOVO LOG
-          console.log('   🏠 Squadra ID:', giocatore.squadra); // ✅ AGGIORNATO: Mostra ID squadra
-          console.log('🔍 Path documento: Squadre/', idSquadra, '/giocatori/', giocatore.id);
+          console.log('   📋 Tipo:', giocatore.tipo);
+          console.log('   🏠 Squadra ID:', giocatore.squadra);
 
-          // ✅ SALVA: documento con ID dalla colonna A come chiave, dati corretti dentro
-          const giocatoreRef = doc(giocatoriSquadraRef, giocatore.id); // Chiave documento = ID dalla colonna A
-          await setDoc(giocatoreRef, giocatore, { merge: false }); // ✅ merge: false sovrascrive completamente
+          // ✅ Aggiorna/Crea nella collezione principale Giocatori - SEMPRE
+          const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatore.id);
+          await setDoc(giocatorePrincipaleRef, giocatore, { merge: false });
 
-          // ✅ Aggiorna/Crea anche nella collezione principale - FORZA SOVRASCRITTURA COMPLETA
-          const giocatorePrincipaleRef = doc(db, 'Giocatori', giocatore.id); // Chiave documento = ID dalla colonna A
-          await setDoc(giocatorePrincipaleRef, giocatore, { merge: false }); // ✅ merge: false sovrascrive completamente
-
-          // ✅ NUOVO: GESTIONE LISTA GIOVANI BASATA SUL CAMPO "TIPO"
+          // ✅ GESTIONE LISTE SEPARATE: Salva SOLO nella lista corretta in base al tipo
           if (giocatore.tipo === 'Giovane') {
-            console.log('👶 Aggiungendo', giocatore.nome, 'alla lista giovani...');
+            console.log('👶 Salvando', giocatore.nome, 'SOLO in lista giovani...');
             const giocatoreGiovaneRef = doc(listaGiovaniRef, giocatore.id);
             await setDoc(giocatoreGiovaneRef, giocatore, { merge: false });
             console.log('✅', giocatore.nome, 'aggiunto alla lista giovani');
           } else {
-            console.log('👥', giocatore.nome, 'aggiunto alla lista giocatori principali');
+            console.log('👥 Salvando', giocatore.nome, 'SOLO in lista giocatori principali...');
+            const giocatoreRef = doc(giocatoriSquadraRef, giocatore.id);
+            await setDoc(giocatoreRef, giocatore, { merge: false });
+            console.log('✅', giocatore.nome, 'aggiunto alla lista giocatori principali');
           }
 
           if (giocatoreEsistente) {
